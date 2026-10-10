@@ -1,0 +1,6 @@
+# Third-party requirements of StoneSage (Python 3.10+). Lodestone (not on PyPI) comes in through pyproject.toml.
+rich>=13.0.0
+prompt_toolkit>=3.0.0
+websockets>=12.0
+redis>=5.0.0
+Pillow>=10.0.0

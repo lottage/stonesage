@@ -1,0 +1,18 @@
+{
+  "name": "StoneSage Homelab Command Center",
+  "short_name": "StoneSage",
+  "description": "Unified Homelab Command Center, AI Cognitive Cockpit & Proxmox / Home Assistant Hub",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#101413",
+  "theme_color": "#101413",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

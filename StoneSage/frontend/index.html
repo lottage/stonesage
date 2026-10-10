@@ -1,0 +1,2367 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="deu">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>StoneSage Enterprise Harness v4.0</title>
+
+  <!-- PWA Meta -->
+  <meta name="theme-color" content="#12151a">
+  <meta name="description" content="Uniform Enterprise AI Agent Harness, Multimodal Vision, and Roaming PTY Shell">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" type="image/svg+xml" href="/icon.svg">
+  <link rel="apple-touch-icon" href="/icon.svg">
+
+  <link rel="stylesheet" id="xterm-css-link" href="/vendor/xterm/xterm.css?v=4.0.4">
+  <link rel="stylesheet" href="/style.css?v=4.3.2">
+
+  <!-- xterm.js Terminal Engine -->
+  <script id="xterm-core-script" src="/vendor/xterm/xterm.js?v=4.0.4"></script>
+  <script id="xterm-fit-script" src="/vendor/xterm/xterm-addon-fit.js?v=4.0.4"></script>
+
+  <!-- Ace Editor Engine (Lightweight Server-Hosted) -->
+  <script src="/vendor/ace/ace.js"></script>
+  <script src="/vendor/ace/ext-language_tools.js"></script>
+  <script src="/vendor/ace/ext-searchbox.js"></script>
+</head>
+<body data-theme="deu">
+  <div id="app-container">
+
+    <!-- ====================================================================
+         1. TOPBAR: TELEMETRY, THEME & GLOBAL NUDGE
+         ==================================================================== -->
+    <header class="terminal-topbar">
+      <div class="topbar-branding">
+        <span class="logo-icon">⚡</span>
+        <span class="branding-text-full">STONESAGE AGENT HARNESS</span>
+        <span class="branding-text-short">STONESAGE</span>
+        <span style="font-size: 0.72rem; color: #22c55e; font-weight: bold; background: rgba(34, 197, 94, 0.15); padding: 1px 5px; border-radius: 3px; border: 1px solid #16a34a;">[v4.0 - Enterprise]</span>
+      </div>
+
+      <!-- Desktop Controls Toolbar -->
+      <div class="topbar-controls-desktop">
+        <!-- Live Node Ping Badge -->
+        <button type="button" class="topbar-badge-btn online" id="topbar-ping-badge" onclick="openClusterModal()" title="Inspect Cluster Telemetry & Latencies">
+          <span class="status-dot"></span> <span id="topbar-ping-text">🟢 PROBING...</span>
+        </button>
+
+        <!-- Node Continuum Selector -->
+        <select class="topbar-select" id="topbar-node-select" title="Active Node Continuum">
+          <option value="">Loading continuum...</option>
+        </select>
+
+        <!-- Model Target Selector -->
+        <select class="topbar-select" id="topbar-model-select" title="Active Model Routing">
+          <option value="coordinator" selected data-profile-tpl="{engines.coordinator.label} :{engines.coordinator.port}">Coordinator</option>
+          <option value="worker" data-profile-tpl="{engines.worker.label} :{engines.worker.port}">Worker</option>
+        </select>
+
+        <!-- Theme Switcher (Deuteranopia Standard) -->
+        <select class="topbar-select" id="topbar-theme-select" title="Color Theme">
+          <option value="deu" selected>DEU (Deuteranopia - Standard)</option>
+          <option value="trit">TRIT (Tritanopia)</option>
+          <option value="win98">WIN98 (Windows 98 Retro)</option>
+          <option value="crt-green">CRT-G (Phosphor Green)</option>
+          <option value="crt-amber">CRT-A (Phosphor Amber)</option>
+        </select>
+
+        <!-- Token Economy Badge -->
+        <span class="topbar-badge" id="topbar-tokens-badge" style="font-family: monospace; font-size: 11px; background: rgba(34, 197, 94, 0.15); color: #22c55e; border: 1px solid #16a34a; padding: 3px 8px; border-radius: 3px; display: inline-flex; align-items: center; gap: 4px;" title="Token Economy: Antigravity Cloud vs Cluster Local Offload">
+          <span>🪙</span> <span>Cloud: 21.5k | Local: 6.0k (22% offload)</span>
+        </span>
+
+        <!-- 3D Multi-Tier Citadel Link -->
+        <a href="/citadel3d/" target="_blank" class="topbar-badge-btn online" style="text-decoration: none; color: #f8fafc; font-weight: bold; background: #0284c7; border: 1px solid #38bdf8;" title="Open 3D Multi-Tier Agent Citadel & Physical Kanban">
+          🏛️ 3D CITADEL
+        </a>
+
+        <!-- Out-of-band Global Nudge -->
+        <button type="button" class="btn-nudge-global" onclick="triggerGlobalNudge()" title="Out-of-band Breakout Directive">
+          ⚡ NUDGE
+        </button>
+      </div>
+
+      <!-- Mobile Quick Controls -->
+      <div class="topbar-controls-mobile">
+        <a href="/citadel3d/" target="_blank" class="topbar-badge-btn online" style="text-decoration: none; color: #f8fafc; font-weight: bold; background: #0284c7; border: 1px solid #38bdf8; padding: 2px 6px;" title="3D Citadel">
+          🏛️ 3D
+        </a>
+        <button type="button" class="topbar-badge-btn online" id="mobile-ping-btn" onclick="openClusterModal()" title="Live Cluster Telemetry">
+          <span class="status-dot"></span> <span id="mobile-ping-text">🟢 ...</span>
+        </button>
+
+        <button type="button" class="topbar-badge-btn" id="mobile-model-btn" onclick="openModelModal()" title="Select Model" style="color:var(--term-text-bright);">
+          <span id="mobile-model-text" data-profile-tpl="🤖 {engines.coordinator.params}">🤖</span> ▾
+        </button>
+
+        <button type="button" class="menu-toggle-btn" id="mobile-menu-btn" onclick="openSettingsDrawer()" title="Settings & Controls">
+          ⚙️
+        </button>
+      </div>
+    </header>
+
+    <!-- ====================================================================
+         2. FUNCTION KEY NAVIGATION TABS
+         ==================================================================== -->
+    <nav class="nav-tab-bar">
+      <button type="button" class="nav-tab-btn active" data-tab="chat">[F1: CHAT &amp; VISION]</button>
+      <button type="button" class="nav-tab-btn" data-tab="workstation">[F2: WORKSTATION]</button>
+      <button type="button" class="nav-tab-btn" data-tab="terminal">[F3: PTY SHELL]</button>
+      <button type="button" class="nav-tab-btn" data-tab="engine">[F4: ENGINE STUDIO]</button>
+      <button type="button" class="nav-tab-btn" data-tab="ha">[F5: SMART HOME &amp; CCTV]</button>
+      <button type="button" class="nav-tab-btn" data-tab="obsidian">[F6: OBSIDIAN]</button>
+    </nav>
+
+    <!-- ====================================================================
+         3. VIEW PANES CONTAINER
+         ==================================================================== -->
+    <main class="view-content-area">
+
+      <!-- [F1: CHAT & VISION] -->
+      <section class="view-pane active" id="view-chat">
+        <!-- Chat Thread & Workspace Sync Bar -->
+        <div class="chat-thread-bar">
+          <div class="chat-thread-inner">
+            <div class="chat-thread-controls">
+              <span class="chat-thread-label">💬 THREAD:</span>
+              <select class="topbar-select chat-thread-select" id="chat-thread-select" title="Switch Conversation Thread">
+                <option value="default">Default Conversation</option>
+              </select>
+              <button type="button" class="term-cmd-btn" id="chat-new-thread-btn" title="Start a New Conversation Thread">[+ NEW]</button>
+              <button type="button" class="term-cmd-btn" id="chat-delete-thread-btn" title="Permanently Delete Current Conversation Thread" style="color:var(--term-accent-red); border-color:var(--term-accent-red);">[🗑️ DEL]</button>
+              <span class="status-badge online chat-ws-badge" id="chat-workspace-badge">📁 [WS: Active]</span>
+              <span class="chat-agent-label">🤖 AGENT:</span>
+              <select class="topbar-select chat-agent-select" id="chat-agent-select" title="Select Sovereign Agent Persona">
+                <option value="courage-computer" selected>✨ courage-computer (Computer: attic computer &amp; sentry)</option>
+                <option value="coder-agent">⚡ coder-agent (Systems Architect &amp; Coder)</option>
+                <option value="wildlife-agent">🌲 wildlife-agent (Perimeter &amp; Fauna Vision)</option>
+                <option value="archivist-agent">📜 archivist-agent (Vector Memory &amp; A-MEM)</option>
+                <option value="sysadmin-agent">🛠️ sysadmin-agent (Homelab &amp; Cluster)</option>
+              </select>
+              <span class="status-badge" id="chat-agent-badge" style="display:none;">🤖 [AGENT: (none)]</span>
+            </div>
+            <div class="chat-sync-status" style="display:flex; align-items:center; gap:8px;">
+              <button type="button" class="term-cmd-btn" id="chat-parallel-stream-btn" onclick="toggleParallelStreamsMode()" title="Toggle Side-by-Side Parallel Streams (Reasoning | Response)">[⚡ PARALLEL STREAMS: OFF]</button>
+              <span id="chat-sync-indicator">🔄 SYNCED</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="chat-stream-container" id="chat-stream">
+          <!-- Chat messages rendered dynamically -->
+        </div>
+
+        <!-- Floating Jump to Bottom Button -->
+        <button type="button" class="chat-scroll-bottom-btn" id="chat-scroll-bottom-btn" style="display:none;" onclick="scrollToChatBottom()" title="Jump to bottom (new streaming tokens below)">
+          ⬇ JUMP TO LATEST
+        </button>
+
+        <div class="chat-prompt-bar">
+          <!-- Staged Images Tray (Drag & Drop / Paste Preview) -->
+          <div class="staged-images-tray" id="staged-images-tray"></div>
+
+          <div class="chat-input-row">
+            <textarea class="chat-textarea" id="chat-prompt-input" rows="2" placeholder="Type prompt or code request... Drag & drop or paste (Ctrl+V) images. Enter to send, Shift+Enter for newline."></textarea>
+            
+            <input type="file" id="chat-file-input" accept="image/*" multiple style="display:none;">
+            <div class="chat-input-actions">
+              <div class="left-actions">
+                <button type="button" class="prompt-btn" id="chat-attach-btn" title="Attach Image / Take Photo">📷 ATTACH</button>
+                <button type="button" class="prompt-btn" id="chat-quick-store-btn" onclick="openQuickCaptureModal()" title="Quick Store URL, Note, or Photo to AI Obsidian Brain">📥 STORE</button>
+                <button type="button" class="prompt-btn" id="chat-clear-btn" title="Clear Chat History">🗑️</button>
+              </div>
+              <div class="right-actions">
+                <span id="convo-status" style="font-size:0.72rem; color:var(--term-accent-gold); margin-right:4px; min-width:0;"></span>
+                <button type="button" class="prompt-btn" id="chat-barge-btn" onclick="toggleBargeIn()" title="Interrupt is OFF. Tap to let you talk over Computer (experimental)." style="background:transparent; border:1px solid #7c3aed; color:#7c3aed; padding:0 6px;">&#9995;</button>
+                <button type="button" class="prompt-btn" id="chat-convo-btn" onclick="toggleConvoMode()" title="Conversation Mode: Hands-free voice loop (Record → Transcribe → Send → TTS → Repeat)" style="background:transparent; border:1px solid #7c3aed; color:#7c3aed;">🗣️ CONVO</button>
+                <button type="button" class="prompt-btn" id="chat-mic-btn" onclick="toggleChatMic()" title="Push-to-Talk: Transcribe speech to prompt (Local Whisper STT)" style="background:transparent; border:1px solid var(--term-border-dim);">🎤 MIC</button>
+                <button type="button" class="prompt-btn stop" id="chat-stop-btn">■ STOP</button>
+                <button type="button" class="prompt-btn send" id="chat-send-btn">SEND ❯</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- [F2: WORKSTATION] -->
+      <section class="view-pane" id="view-workstation">
+        <!-- Workstation Control Header -->
+        <div class="workstation-control-bar" style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; padding:6px 12px; background:var(--term-surface); border-bottom:1px solid var(--term-border-dim); font-size:0.8rem;">
+          <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+            <span style="font-weight:bold; color:var(--term-text-bright);">📁 WORKSPACE:</span>
+            <select class="topbar-select" id="workstation-workspace-select" style="max-width:240px;" title="Select Active Project Workspace">
+              <option value="">Loading workspaces...</option>
+            </select>
+            <button type="button" class="term-cmd-btn" id="ws-mkdir-btn" title="Create a New Project Folder">[+ mkdir PROJECT]</button>
+            <button type="button" class="term-cmd-btn" id="ws-add-root-btn" title="Add Custom Workspace Root Path">[+ ADD ROOT]</button>
+            <button type="button" class="term-cmd-btn" id="workstation-agent-badge" style="color:var(--term-accent-gold); border-color:var(--term-accent-gold);" title="Inspect and Refine In-Repository Agent DNA">🤖 [AGENT: (none)]</button>
+            
+            <span style="margin-left:6px; font-weight:bold; color:var(--term-text-muted);">AUTONOMY:</span>
+            <select class="topbar-select" id="workstation-autonomy-select" title="Agent Permission Boundary">
+              <option value="tiered" selected>🛡️ Tiered (Supervised)</option>
+              <option value="read_only">🔒 Read-Only (Audit)</option>
+              <option value="autonomous">⚡ Autonomous Master</option>
+            </select>
+            <div class="workstation-mode-toggle" style="display:flex; gap:4px; margin-left:6px; padding-left:8px; border-left:1px solid var(--term-border-dim);">
+              <button type="button" class="term-cmd-btn active" id="ws-mode-btn-code" onclick="setWorkstationViewMode('code')">📝 [CODE EDITOR]</button>
+              <button type="button" class="term-cmd-btn" id="ws-mode-btn-3d" onclick="setWorkstationViewMode('3d')">🏛️ [3D STUDIO]</button>
+            </div>
+          </div>
+
+          <!-- Terminal Tool Launchers -->
+          <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+            <button type="button" class="term-cmd-btn" id="ws-tool-nano" title="Open selected file in nano terminal editor">📝 [nano]</button>
+            <button type="button" class="term-cmd-btn" id="ws-tool-micro" title="Open selected file in micro / vim">⚡ [micro/vim]</button>
+            <button type="button" class="term-cmd-btn" id="ws-tool-ls" title="Run ls -la in active workspace">📁 [ls -la]</button>
+            <button type="button" class="term-cmd-btn" id="ws-tool-git" title="Check git status and diff">🔍 [git diff]</button>
+            <button type="button" class="term-cmd-btn" id="ws-tool-test" title="Run project tests">🚀 [test/run]</button>
+          </div>
+        </div>
+
+        <!-- Mobile Mode Switch Bar (Active on screens <= 768px) -->
+        <div class="workstation-mobile-bar" id="ws-mobile-bar" style="display:none; padding:4px 8px; background:var(--term-surface); border-bottom:1px solid var(--term-border-dim); align-items:center; justify-content:space-between;">
+          <div style="display:flex; gap:6px;">
+            <button type="button" class="term-cmd-btn active" id="ws-mobile-btn-tree" onclick="setWorkstationMobileMode('tree')">📁 [FILES TREE]</button>
+            <button type="button" class="term-cmd-btn" id="ws-mobile-btn-editor" onclick="setWorkstationMobileMode('editor')">📝 [CODE EDITOR]</button>
+          </div>
+          <span id="ws-mobile-file-indicator" style="font-size:0.72rem; color:var(--term-text-muted); overflow:hidden; text-overflow:ellipsis; max-width:140px; white-space:nowrap;"></span>
+        </div>
+
+        <!-- Split Workspace Viewport -->
+        <div class="workstation-viewport" id="workstation-viewport" data-mobile-mode="tree" style="display:flex; flex:1; min-height:0; overflow:hidden;">
+          <!-- Left: Workspace Directory Tree -->
+          <aside class="workstation-sidebar" id="workstation-sidebar" style="width:260px; min-width:200px; border-right:1px solid var(--term-border-dim); display:flex; flex-direction:column; background:var(--term-bg);">
+            <div style="padding:6px 10px; font-weight:bold; font-size:0.75rem; border-bottom:1px solid var(--term-border-dim); color:var(--term-text-bright); display:flex; justify-content:space-between; align-items:center;">
+              <span id="workstation-tree-title">📁 PROJECT FILES</span>
+              <button type="button" class="term-cmd-btn" id="ws-tree-refresh-btn" style="padding:1px 6px; font-size:0.7rem;">↻</button>
+            </div>
+            <div id="workstation-file-tree" style="flex:1; overflow-y:auto; padding:6px; font-family:var(--font-mono); font-size:0.8rem;">
+              <div style="color:var(--term-text-muted);">Loading files...</div>
+            </div>
+          </aside>
+
+          <!-- Right: IDE Code Editor & Integrated Terminal -->
+          <div class="workstation-main" id="workstation-main" style="flex:1; display:flex; flex-direction:column; min-width:0; background:var(--term-bg); height:100%;">
+            <div style="display:flex; justify-content:space-between; align-items:center; padding:5px 10px; background:var(--term-surface); border-bottom:1px solid var(--term-border-dim); font-size:0.75rem; flex-wrap:wrap; gap:6px;">
+              <div style="display:flex; align-items:center; gap:8px; overflow:hidden;">
+                <button type="button" class="term-cmd-btn" id="ws-mobile-back-btn" onclick="setWorkstationMobileMode('tree')" style="display:none; color:var(--term-accent-gold); font-weight:bold; padding:1px 6px;">[◀ FILES]</button>
+                <span style="color:var(--term-text-muted); font-size:0.72rem;">ACTIVE FILE:</span>
+                <span id="workstation-active-file-title" style="font-weight:bold; color:var(--term-text-bright); text-overflow:ellipsis; overflow:hidden; white-space:nowrap;">(Click any file in tree to open)</span>
+                <span id="workstation-file-stats" style="font-size:0.7rem; color:var(--term-text-muted);"></span>
+              </div>
+              <div style="display:flex; gap:6px; align-items:center;">
+                <button type="button" class="term-cmd-btn" id="ws-save-btn" onclick="saveWorkstationFile()" style="background:var(--term-accent-blue); color:#fff; font-weight:bold;">[💾 SAVE FILE]</button>
+                <button type="button" class="term-cmd-btn" id="ws-diff-btn" onclick="toggleWorkstationDiff()">[GIT DIFF]</button>
+                <button type="button" class="term-cmd-btn" id="ws-reload-btn" onclick="reloadWorkstationFile()">[RELOAD]</button>
+                <button type="button" class="term-cmd-btn" id="ws-toggle-view-btn" onclick="toggleWorkstationView()">[TERMINAL EMBED]</button>
+              </div>
+            </div>
+
+            <!-- Multi-Tab Open Files Bar -->
+            <div class="ws-tabs-bar" id="ws-tabs-bar"></div>
+
+            <!-- Primary Code Editor Viewport -->
+            <div id="workstation-editor-container" style="flex:1; display:flex; flex-direction:column; min-height:0; position:relative;">
+              <div id="ace-editor"></div>
+              <textarea class="workstation-editor" id="workstation-editor-textarea" style="display:none;"></textarea>
+            </div>
+
+            <!-- IDE Status Bar -->
+            <div class="ws-statusbar" id="ws-statusbar">
+              <div style="display:flex; gap:12px; align-items:center;">
+                <span id="ws-status-pos">Ln 1, Col 1</span>
+                <span id="ws-status-encoding">UTF-8</span>
+                <span id="ws-status-spaces">Spaces: 4</span>
+                <span id="ws-status-state" style="color:var(--term-success, #38bdf8);">Ready</span>
+              </div>
+              <div style="display:flex; gap:8px; align-items:center;">
+                <label for="ws-mode-select" style="font-size:0.7rem; color:var(--term-text-muted);">Syntax:</label>
+                <select id="ws-mode-select" class="topbar-select" style="font-size:0.7rem; padding:1px 4px;" onchange="window.setAceLanguageMode ? window.setAceLanguageMode(this.value) : null">
+                  <option value="python">Python</option>
+                  <option value="javascript">JavaScript</option>
+                  <option value="html">HTML</option>
+                  <option value="css">CSS</option>
+                  <option value="json">JSON</option>
+                  <option value="markdown">Markdown</option>
+                  <option value="sh">Shell / Bash</option>
+                  <option value="yaml">YAML</option>
+                  <option value="text">Plain Text</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Secondary Terminal Screen for Workstation (toggleable) -->
+            <div class="terminal-screen" id="workstation-term-screen" tabindex="0" style="display:none; flex:1; margin:0; border:none; border-radius:0;">
+[WORKSTATION HARNESS] Initializing terminal embed...
+            </div>
+          </div>
+        </div>
+
+        <!-- [3D DIGITAL ART STUDIO IN WORKSTATION] -->
+        <div class="workstation-3d-pane" id="workstation-3d-pane" style="display:none; flex:1; min-height:0; overflow:hidden; padding:8px; flex-direction:column;">
+          <div class="harness-studio-layout" style="display:flex; flex-direction:column; height:100%; min-height:0; gap:10px;">
+            <!-- 3D Header Strip -->
+            <div style="background:var(--term-surface); border:1px solid var(--term-border-dim); padding:8px 12px; border-radius:3px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+              <div style="display:flex; align-items:center; gap:8px;">
+                <span style="font-weight:bold; color:var(--term-accent-gold); font-size:0.9rem;">🏛️ SOVEREIGN AGENT 3D DIGITAL ART GALLERY &amp; STUDIO</span>
+                <span class="status-badge online" style="font-size:0.72rem;">BLENDER 4.0.2 (:8095/:9876)</span>
+              </div>
+              <div style="display:flex; gap:8px;">
+                <button type="button" class="term-cmd-btn" onclick="refresh3DGallery()" title="Refresh Gallery from Cluster">[🔄 REFRESH GALLERY]</button>
+                <a href="/citadel3d/" target="_blank" class="term-cmd-btn" style="text-decoration:none; color:var(--term-accent-blue); font-weight:bold;">[🏛️ OPEN CITADEL 3D TWIN]</a>
+              </div>
+            </div>
+
+            <!-- Main Split View -->
+            <div style="display:grid; grid-template-columns: 380px 1fr; gap:10px; flex:1; min-height:0; overflow:hidden;">
+              <!-- Left: Exhibit Roster & Metadata Gallery -->
+              <div class="harness-card" style="display:flex; flex-direction:column; margin-bottom:0; min-height:0;">
+                <div class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
+                  <span>🖼️ EXHIBIT ROSTER</span>
+                  <span id="gallery-count-badge" style="font-size:0.75rem; color:var(--term-text-muted);">0 Models</span>
+                </div>
+                <div id="gallery-cards-list" style="flex:1; overflow-y:auto; padding:8px; display:flex; flex-direction:column; gap:10px; background:var(--term-bg);">
+                  <div style="color:var(--term-text-muted); font-size:0.75rem; text-align:center; padding:2rem;">Loading 3D exhibit gallery...</div>
+                </div>
+              </div>
+
+              <!-- Right: Three.js Interactive 3D Viewport & Prompt Bar -->
+              <div class="harness-card" style="display:flex; flex-direction:column; margin-bottom:0; min-height:0;">
+                <div class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
+                  <span id="viewport-model-title">🌐 INTERACTIVE 3D INSPECTOR</span>
+                  <div style="display:flex; gap:6px;">
+                    <button type="button" class="term-cmd-btn" id="btn-toggle-wireframe" onclick="toggle3DWireframe()">[WIREFRAME]</button>
+                    <button type="button" class="term-cmd-btn" id="btn-toggle-rotate" onclick="toggle3DAutoRotate()">[AUTO-ROTATE]</button>
+                    <button type="button" class="term-cmd-btn" onclick="reset3DCamera()">[RESET CAM]</button>
+                  </div>
+                </div>
+                
+                <!-- 3D Canvas Container -->
+                <div id="three-viewport-container" style="flex:1; min-height:300px; position:relative; background:#111418; border-radius:3px; overflow:hidden;">
+                  <canvas id="three-canvas" style="width:100%; height:100%; display:block;"></canvas>
+                  <div id="viewport-hud-stats" style="position:absolute; top:8px; left:8px; background:rgba(0,0,0,0.7); color:#22c55e; font-family:var(--font-mono); font-size:0.75rem; padding:4px 8px; border-radius:3px; border:1px solid #16a34a; pointer-events:none;">
+                    Vertices: -- | Faces: -- | FPS: --
+                  </div>
+                </div>
+
+                <!-- Bottom: Agent 3D Modeling Prompt Bar -->
+                <div style="margin-top:10px; padding:10px; background:var(--term-surface); border:1px solid var(--term-border-dim); border-radius:3px; display:flex; flex-direction:column; gap:8px;">
+                  <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <span style="font-weight:bold; font-size:0.76rem; color:var(--term-accent-gold);">⚡ AGENT 3D MODELING &amp; EDITING DISPATCH</span>
+                    <div style="display:flex; align-items:center; gap:8px; font-size:0.75rem;">
+                      <span>Quality:</span>
+                      <select class="topbar-select" id="studio-quality-select">
+                        <option value="draft" selected>Draft Preview (16 samples, ~2s)</option>
+                        <option value="standard">Standard 1080p (64 samples, ~15s)</option>
+                        <option value="production_2k">Production 2K (256 samples, ~60s)</option>
+                        <option value="cinematic_4k">Cinematic 4K (512 samples, ~3-5m)</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div style="display:flex; gap:8px;">
+                    <input type="text" class="topbar-select" id="studio-prompt-input" style="flex:1; padding:6px 10px;" placeholder="e.g. Add a golden name collar to the dog, or model a retro workstation desk...">
+                    <button type="button" class="term-cmd-btn" onclick="dispatchAgent3DJob()" style="background:var(--term-accent-blue); color:#fff; font-weight:bold; padding:6px 14px;">[🚀 DISPATCH TO CLUSTER]</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- [F3: PTY SHELL] -->
+      <section class="view-pane" id="view-terminal">
+        <div class="terminal-toolbar">
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span style="font-weight:bold; color:var(--term-text-bright); font-size:0.8rem;">📟 1:1 INTERACTIVE PTY PIPE</span>
+            <span class="status-badge offline" id="terminal-status-badge">
+              <span class="status-dot"></span> DISCONNECTED
+            </span>
+          </div>
+
+          <div class="terminal-quick-cmds">
+            <button type="button" class="term-cmd-btn" onclick="sendTerminalCommand('tmux attach || tmux new -s stonesage')">[tmux attach]</button>
+            <button type="button" class="term-cmd-btn" onclick="sendTerminalCommand('btop')">[btop]</button>
+            <button type="button" class="term-cmd-btn" onclick="sendTerminalCommand('git status')">[git status]</button>
+            <button type="button" class="term-cmd-btn" onclick="sendTerminalCommand('nudge coordinator \'Break loop and report.\'')">[nudge loop]</button>
+            <button type="button" class="term-cmd-btn" id="term-connect-btn">[CONNECT SHELL]</button>
+            <button type="button" class="term-cmd-btn" id="term-clear-btn">[CLEAR]</button>
+          </div>
+        </div>
+
+        <div class="terminal-screen" id="terminal-screen" tabindex="0">
+[STONESAGE PTY TERMINAL] Initializing 1:1 roaming pipe... Click [CONNECT SHELL] or type commands.
+        </div>
+
+        <!-- Interactive Mobile Terminal Control Bar -->
+        <div class="terminal-mobile-bar" id="terminal-mobile-bar">
+          <!-- Quick Touch Keys Row -->
+          <div class="terminal-mobile-keys" id="terminal-mobile-keys">
+            <button type="button" class="term-key-btn" onclick="sendTerminalKey('ctrl_c')">Ctrl+C</button>
+            <button type="button" class="term-key-btn" onclick="sendTerminalKey('ctrl_x')">^X Exit</button>
+            <button type="button" class="term-key-btn" onclick="sendTerminalKey('ctrl_o')">^O Save</button>
+            <button type="button" class="term-key-btn" onclick="sendTerminalKey('enter')">Enter ↵</button>
+            <button type="button" class="term-key-btn" onclick="sendTerminalKey('tab')">Tab ⇥</button>
+            <button type="button" class="term-key-btn" onclick="sendTerminalKey('up')">▲ Prev</button>
+            <button type="button" class="term-key-btn" onclick="sendTerminalKey('down')">▼ Next</button>
+            <button type="button" class="term-key-btn" onclick="sendTerminalKey('esc')">Esc</button>
+            <button type="button" class="term-key-btn" onclick="sendTerminalCommand('clear')">Clear</button>
+            <button type="button" class="term-key-btn" onclick="sendTerminalCommand('ls -la')">ls -la</button>
+            <button type="button" class="term-key-btn" onclick="sendTerminalCommand('cd ..')">cd ..</button>
+          </div>
+
+          <!-- Mobile Command Input Form -->
+          <form class="terminal-mobile-input-row" id="terminal-mobile-form" onsubmit="handleMobileTerminalSubmit(event)">
+            <input type="text" id="terminal-mobile-input" class="form-input" placeholder="Type shell command or text..." autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false">
+            <button type="submit" class="prompt-btn send" id="terminal-mobile-send-btn">SEND ❯</button>
+          </form>
+        </div>
+      </section>
+
+      <!-- [F4: ENGINE STUDIO] Consolidated Master Engine -->
+      <section class="view-pane" id="view-engine">
+        <div class="engine-studio-container">
+          <!-- Top Sub-Navigation Bar (Windows Media Player Ergonomics) -->
+          <div class="engine-subnav-bar">
+            <div class="engine-subnav-links">
+              <button type="button" class="engine-subnav-btn active" data-layer="fleet">[1. COMPUTE MATRIX]</button>
+              <button type="button" class="engine-subnav-btn" data-layer="console" style="color:var(--term-accent-gold);font-weight:bold;">[2. ⚡ ENGINE CONSOLE]</button>
+              <button type="button" class="engine-subnav-btn" data-layer="agentdna">[3. AGENT DNA]</button>
+              <button type="button" class="engine-subnav-btn" data-layer="memory">[4. MEMORY HUD]</button>
+              <button type="button" class="engine-subnav-btn" data-layer="trainer">[5. AUTONOMOUS &amp; TRAINER]</button>
+            </div>
+
+            <!-- Profile & Power Controls -->
+            <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+              <select class="topbar-select" id="engine-profile-select" style="max-width:180px;" onchange="window.loadSelectedProfile ? window.loadSelectedProfile(this.value) : null">
+                <option value="">-- Saved Profiles --</option>
+              </select>
+              <button type="button" class="term-cmd-btn" onclick="window.saveCurrentProfile ? window.saveCurrentProfile() : null" style="background:var(--term-accent-blue); color:#fff; font-weight:bold;">[💾 SAVE PROFILE]</button>
+              <button type="button" class="term-cmd-btn" onclick="window.deleteSelectedProfile ? window.deleteSelectedProfile() : null" style="color:var(--term-accent-red);">[🗑️ DEL]</button>
+              <button type="button" class="term-cmd-btn" id="engine-mode-toggle-btn" style="color:var(--term-success); font-weight:bold;">[MODE: SIMPLE 🟢]</button>
+            </div>
+          </div>
+
+          <!-- =================================================================
+               LAYER 1: COMPUTE & HARDWARE FLEET MATRIX
+               ================================================================= -->
+          <div class="engine-layer-content engine-layer" id="engine-layer-fleet" style="display:block;">
+            <div class="harness-card-title" style="margin-bottom:10px;">
+              <span>🖥️ MULTI-NODE CLUSTER TOPOLOGY &amp; WORKSTATION CONTINUUM</span>
+              <div style="display:flex; gap:6px; align-items:center;">
+                <button type="button" class="term-cmd-btn" onclick="openAddNodeModal()" style="background:var(--term-accent-blue); color:#fff; font-weight:bold;">[+ ADD COMPUTE NODE]</button>
+                <button type="button" class="term-cmd-btn" onclick="loadFleetInstances(true)">[REFRESH PINGS]</button>
+              </div>
+            </div>
+            <div class="fleet-grid" id="fleet-nodes-container">
+              <!-- Node cards rendered dynamically -->
+            </div>
+          </div>
+
+          <!-- =================================================================
+               LAYER 2: PROFILES & UNRESTRICTED SAMPLING (0-MAX SLIDERS + VRAM SIZER)
+               ================================================================= -->
+                    <!-- =================================================================
+               LAYER 2: ENGINE CONSOLE — Unified LLM Control, Sampling & Debug
+               ================================================================= -->
+          <div class="engine-layer-content engine-layer" id="engine-layer-console" style="display:none;">
+
+            <!-- Console Sub-Navigation -->
+            <div class="econsole-subnav" style="display:flex; gap:6px; margin-bottom:10px; flex-wrap:wrap;">
+              <button type="button" class="econsole-subnav-btn active" data-layer="dashboard">[📊 DASHBOARD]</button>
+              <button type="button" class="econsole-subnav-btn" data-layer="loader" style="color:var(--term-text-bright);">[🚀 MODEL LOADER]</button>
+              <button type="button" class="econsole-subnav-btn" data-layer="boost" style="color:var(--term-accent-gold);">[⚡ BOOST]</button>
+              <button type="button" class="econsole-subnav-btn" data-layer="trace" style="color:var(--term-text-bright);">[🧭 TRACE]</button>
+              <button type="button" class="econsole-subnav-btn" data-layer="memories" style="color:var(--term-text-bright);">[🧠 MEMORIES]</button>
+              <button type="button" class="econsole-subnav-btn" data-layer="debug">[🔍 PLAYGROUND &amp; DEBUG]</button>
+              <button type="button" class="econsole-subnav-btn" data-layer="logs">[📜 SYSTEM LOGS]</button>
+            </div>
+
+            <!-- Engine Selector Tabs (dynamic, populated by JS) -->
+            <div id="econsole-engine-tabs" style="display:flex; gap:4px; margin-bottom:10px; flex-wrap:wrap;"></div>
+
+            <!-- Sub-Layer: Dashboard -->
+            <div class="econsole-layer" id="econsole-layer-dashboard" style="display:block;">
+              <div class="harness-card-title" style="margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
+                <span>⚡ LIVE ENGINE DASHBOARD — Real-Time Cluster State (3s Poll)</span>
+                <div style="display:flex; gap:6px; align-items:center;">
+                  <input type="text" class="form-input" id="econsole-dyn-host" placeholder="Host IP" style="width:120px; font-size:0.75rem; padding:2px 6px;">
+                  <input type="number" class="form-input" id="econsole-dyn-port" placeholder="Port" value="1234" style="width:70px; font-size:0.75rem; padding:2px 6px;">
+                  <input type="text" class="form-input" id="econsole-dyn-name" placeholder="Name" style="width:100px; font-size:0.75rem; padding:2px 6px;">
+                  <button type="button" class="term-cmd-btn" id="econsole-add-node" style="font-size:0.72rem;">[+ ADD NODE]</button>
+                </div>
+              </div>
+              <div id="econsole-dashboard-grid" class="econsole-grid">
+                <div style="padding:1rem; color:var(--term-text-muted);">Polling engines...</div>
+              </div>
+            </div>
+
+            <!-- Sub-Layer: Courage trace, one row per Courage turn (js/courage_trace.js, backend/courage/trace.py) -->
+            <div class="econsole-layer" id="econsole-layer-trace" style="display:none;">
+              <div id="courage-trace-root"></div>
+            </div>
+
+            <!-- Sub-Layer: Courage's conversational memory (js/courage_memories.js, backend/courage/memory.py) -->
+            <div class="econsole-layer" id="econsole-layer-memories" style="display:none;">
+              <div id="courage-memories-root"></div>
+            </div>
+
+            <!-- Sub-Layer: Boost, free extra inference (js/boost.js, backend/boost) -->
+            <div class="econsole-layer" id="econsole-layer-boost" style="display:none;">
+              <div id="boost-root"></div>
+            </div>
+
+            <!-- Sub-Layer: Model Loader (js/model_loader.js; replaces the parameter editor and VRAM sizer) -->
+            <div class="econsole-layer" id="econsole-layer-loader" style="display:none;">
+              <div id="model-loader-root"></div>
+            </div>
+
+            <!-- Sub-Layer: Parameter Editor & Sampling Profiles (retired: no nav button; kept until the old scripts are removed) -->
+            <div class="econsole-layer" id="econsole-layer-params" style="display:none;">
+              <div class="harness-card-title" style="margin-bottom:8px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+                <span>⚙️ PARAMETER EDITOR &amp; SAMPLING PROFILES — Live Model Tuning</span>
+                <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+                  <button type="button" class="term-cmd-btn" onclick="window.saveCurrentProfile ? window.saveCurrentProfile() : null" style="background:var(--term-accent-blue); color:#fff; font-weight:bold;">[💾 SAVE PROFILE]</button>
+                  <button type="button" class="term-cmd-btn" onclick="window.deleteSelectedProfile ? window.deleteSelectedProfile() : null" style="color:var(--term-accent-red);">[🗑️ DEL]</button>
+                </div>
+              </div>
+
+              <!-- Live Per-Engine Parameter Card -->
+              <div id="econsole-param-editor" class="harness-card" style="padding:12px; margin-bottom:12px;">
+                <div style="color:var(--term-text-muted);">Select an engine to view and edit its parameters.</div>
+              </div>
+
+              <!-- Unrestricted Parameter Controls (0-Max Sliders + Synchronized Numeric Inputs) -->
+            <div class="harness-card" style="margin-bottom:12px;">
+              <div class="harness-card-title">
+                <span>⚙️ UNRESTRICTED SAMPLING &amp; INFERENCE CONTROLS</span>
+                <span style="font-size:0.75rem; color:var(--term-text-muted);">[0 TO MAX • NO ARBITRARY CLAMPING]</span>
+              </div>
+              <div class="unrestricted-grid">
+                <!-- Temperature -->
+                <div class="unrestricted-control-card">
+                  <label>Temperature (0.0 to 3.0):</label>
+                  <div class="unrestricted-slider-row">
+                    <input type="range" id="sl-temp" min="0.0" max="3.0" step="0.01" value="0.70">
+                    <input type="number" id="num-temp" min="0.0" max="5.0" step="0.01" value="0.70">
+                  </div>
+                </div>
+
+                <!-- Min-P -->
+                <div class="unrestricted-control-card">
+                  <label>Min-P (0.0 to 1.0):</label>
+                  <div class="unrestricted-slider-row">
+                    <input type="range" id="sl-minp" min="0.0" max="1.0" step="0.005" value="0.06">
+                    <input type="number" id="num-minp" min="0.0" max="1.0" step="0.005" value="0.06">
+                  </div>
+                </div>
+
+                <!-- Top-P -->
+                <div class="unrestricted-control-card">
+                  <label>Top-P (0.0 to 1.0):</label>
+                  <div class="unrestricted-slider-row">
+                    <input type="range" id="sl-topp" min="0.0" max="1.0" step="0.01" value="1.0">
+                    <input type="number" id="num-topp" min="0.0" max="1.0" step="0.01" value="1.0">
+                  </div>
+                </div>
+
+                <!-- Top-K -->
+                <div class="unrestricted-control-card">
+                  <label>Top-K (0 to 1000):</label>
+                  <div class="unrestricted-slider-row">
+                    <input type="range" id="sl-topk" min="0" max="1000" step="1" value="40">
+                    <input type="number" id="num-topk" min="0" max="10000" step="1" value="40">
+                  </div>
+                </div>
+
+                <!-- Typical-P -->
+                <div class="unrestricted-control-card engine-advanced-only" style="display:none;">
+                  <label>Typical-P (0.0 to 1.0):</label>
+                  <div class="unrestricted-slider-row">
+                    <input type="range" id="sl-typp" min="0.0" max="1.0" step="0.01" value="1.0">
+                    <input type="number" id="num-typp" min="0.0" max="1.0" step="0.01" value="1.0">
+                  </div>
+                </div>
+
+                <!-- Tail Free Sampling (TFS-Z) -->
+                <div class="unrestricted-control-card engine-advanced-only" style="display:none;">
+                  <label>TFS-Z (0.0 to 1.0):</label>
+                  <div class="unrestricted-slider-row">
+                    <input type="range" id="sl-tfsz" min="0.0" max="1.0" step="0.01" value="1.0">
+                    <input type="number" id="num-tfsz" min="0.0" max="1.0" step="0.01" value="1.0">
+                  </div>
+                </div>
+
+                <!-- Presence Penalty -->
+                <div class="unrestricted-control-card">
+                  <label>Presence Penalty (-2.0 to 2.0):</label>
+                  <div class="unrestricted-slider-row">
+                    <input type="range" id="sl-pres" min="-2.0" max="2.0" step="0.05" value="0.20">
+                    <input type="number" id="num-pres" min="-2.0" max="2.0" step="0.05" value="0.20">
+                  </div>
+                </div>
+
+                <!-- Frequency Penalty -->
+                <div class="unrestricted-control-card">
+                  <label>Frequency Penalty (-2.0 to 2.0):</label>
+                  <div class="unrestricted-slider-row">
+                    <input type="range" id="sl-freq" min="-2.0" max="2.0" step="0.05" value="0.0">
+                    <input type="number" id="num-freq" min="-2.0" max="2.0" step="0.05" value="0.0">
+                  </div>
+                </div>
+
+                <!-- Repetition Penalty -->
+                <div class="unrestricted-control-card">
+                  <label>Repetition Penalty (0.0 to 3.0):</label>
+                  <div class="unrestricted-slider-row">
+                    <input type="range" id="sl-rep" min="0.0" max="3.0" step="0.05" value="1.05">
+                    <input type="number" id="num-rep" min="0.0" max="10.0" step="0.05" value="1.05">
+                  </div>
+                </div>
+
+                <!-- Repeat Last N -->
+                <div class="unrestricted-control-card engine-advanced-only" style="display:none;">
+                  <label>Repeat Last N (0 to 4096 tokens):</label>
+                  <div class="unrestricted-slider-row">
+                    <input type="range" id="sl-repeat-last-n" min="0" max="4096" step="16" value="64">
+                    <input type="number" id="num-repeat-last-n" min="0" max="65536" step="1" value="64">
+                  </div>
+                </div>
+
+                <!-- Context Length -->
+                <div class="unrestricted-control-card">
+                  <label>Context Length (-c / 0 = Model Default to Unrestricted):</label>
+                  <div class="unrestricted-slider-row">
+                    <input type="range" id="sl-ctx" min="0" max="1048576" step="256" value="16384">
+                    <input type="number" id="num-ctx" min="0" max="4194304" step="256" value="16384">
+                  </div>
+                </div>
+
+                <!-- Max Output Tokens -->
+                <div class="unrestricted-control-card engine-advanced-only" style="display:none;">
+                  <label>Predict Max (-n / -1 to 32768):</label>
+                  <div class="unrestricted-slider-row">
+                    <input type="range" id="sl-npredict" min="-1" max="32768" step="128" value="2048">
+                    <input type="number" id="num-npredict" min="-1" max="65536" step="128" value="2048">
+                  </div>
+                </div>
+
+                <!-- DRY Multiplier (llama.cpp Don't Repeat Yourself) -->
+                <div class="unrestricted-control-card engine-advanced-only" style="display:none;">
+                  <label>DRY Multiplier (0.0 = off, 0.8 = standard):</label>
+                  <div class="unrestricted-slider-row">
+                    <input type="range" id="sl-dry-mult" min="0.0" max="3.0" step="0.05" value="0.0">
+                    <input type="number" id="num-dry-mult" min="0.0" max="10.0" step="0.05" value="0.0">
+                  </div>
+                </div>
+
+                <!-- DRY Base -->
+                <div class="unrestricted-control-card engine-advanced-only" style="display:none;">
+                  <label>DRY Base (1.0 to 3.0):</label>
+                  <div class="unrestricted-slider-row">
+                    <input type="range" id="sl-dry-base" min="1.0" max="3.0" step="0.05" value="1.75">
+                    <input type="number" id="num-dry-base" min="1.0" max="5.0" step="0.05" value="1.75">
+                  </div>
+                </div>
+
+                <!-- DRY Allowed Length -->
+                <div class="unrestricted-control-card engine-advanced-only" style="display:none;">
+                  <label>DRY Allowed Length (0 to 20):</label>
+                  <div class="unrestricted-slider-row">
+                    <input type="range" id="sl-dry-len" min="0" max="20" step="1" value="2">
+                    <input type="number" id="num-dry-len" min="0" max="100" step="1" value="2">
+                  </div>
+                </div>
+
+                <!-- DRY Penalty Last N -->
+                <div class="unrestricted-control-card engine-advanced-only" style="display:none;">
+                  <label>DRY Penalty Last N (-1 = all):</label>
+                  <div class="unrestricted-slider-row">
+                    <input type="range" id="sl-dry-pen" min="-1" max="4096" step="64" value="-1">
+                    <input type="number" id="num-dry-pen" min="-1" max="65536" step="1" value="-1">
+                  </div>
+                </div>
+
+                <!-- XTC Probability (Exclude Top Choices) -->
+                <div class="unrestricted-control-card engine-advanced-only" style="display:none;">
+                  <label>XTC Probability (0.0 = off, 0.5 = active):</label>
+                  <div class="unrestricted-slider-row">
+                    <input type="range" id="sl-xtc-prob" min="0.0" max="1.0" step="0.05" value="0.0">
+                    <input type="number" id="num-xtc-prob" min="0.0" max="1.0" step="0.05" value="0.0">
+                  </div>
+                </div>
+
+                <!-- XTC Threshold -->
+                <div class="unrestricted-control-card engine-advanced-only" style="display:none;">
+                  <label>XTC Threshold (0.0 to 1.0):</label>
+                  <div class="unrestricted-slider-row">
+                    <input type="range" id="sl-xtc-thresh" min="0.0" max="1.0" step="0.01" value="0.10">
+                    <input type="number" id="num-xtc-thresh" min="0.0" max="1.0" step="0.01" value="0.10">
+                  </div>
+                </div>
+
+                <!-- Dynamic Temperature Range -->
+                <div class="unrestricted-control-card engine-advanced-only" style="display:none;">
+                  <label>DynaTemp Range (0.0 to 2.0):</label>
+                  <div class="unrestricted-slider-row">
+                    <input type="range" id="sl-dynatemp-range" min="0.0" max="2.0" step="0.05" value="0.0">
+                    <input type="number" id="num-dynatemp-range" min="0.0" max="5.0" step="0.05" value="0.0">
+                  </div>
+                </div>
+
+                <!-- Dynamic Temperature Exponent -->
+                <div class="unrestricted-control-card engine-advanced-only" style="display:none;">
+                  <label>DynaTemp Exponent (0.0 to 5.0):</label>
+                  <div class="unrestricted-slider-row">
+                    <input type="range" id="sl-dynatemp-exp" min="0.0" max="5.0" step="0.1" value="1.0">
+                    <input type="number" id="num-dynatemp-exp" min="0.0" max="10.0" step="0.1" value="1.0">
+                  </div>
+                </div>
+
+                <!-- Mirostat Mode -->
+                <div class="unrestricted-control-card engine-advanced-only" style="display:none;">
+                  <label>Mirostat Mode:</label>
+                  <select id="harness-mirostat" class="form-select">
+                    <option value="0" selected>0: Disabled</option>
+                    <option value="1">1: Mirostat v1</option>
+                    <option value="2">2: Mirostat v2</option>
+                  </select>
+                </div>
+
+                <!-- Mirostat Tau -->
+                <div class="unrestricted-control-card engine-advanced-only" style="display:none;">
+                  <label>Mirostat Tau (Target Entropy):</label>
+                  <div class="unrestricted-slider-row">
+                    <input type="range" id="sl-mirostat-tau" min="0.0" max="10.0" step="0.1" value="5.0">
+                    <input type="number" id="num-mirostat-tau" min="0.0" max="20.0" step="0.1" value="5.0">
+                  </div>
+                </div>
+
+                <!-- Mirostat Eta -->
+                <div class="unrestricted-control-card engine-advanced-only" style="display:none;">
+                  <label>Mirostat Eta (Learning Rate):</label>
+                  <div class="unrestricted-slider-row">
+                    <input type="range" id="sl-mirostat-eta" min="0.0" max="1.0" step="0.01" value="0.10">
+                    <input type="number" id="num-mirostat-eta" min="0.0" max="2.0" step="0.01" value="0.10">
+                  </div>
+                </div>
+
+                <!-- GPU Offload Layers -->
+                <div class="unrestricted-control-card engine-advanced-only" style="display:none;">
+                  <label>GPU Offload Layers (-ngl / 0 to 128):</label>
+                  <div class="unrestricted-slider-row">
+                    <input type="range" id="sl-ngl" min="0" max="128" step="1" value="99">
+                    <input type="number" id="num-ngl" min="0" max="256" step="1" value="99">
+                  </div>
+                </div>
+
+                <!-- Flash Attention -->
+                <div class="unrestricted-control-card engine-advanced-only" style="display:none;">
+                  <label>Flash Attention (-fa):</label>
+                  <select id="harness-flash-attn" class="form-select">
+                    <option value="on" selected>ON</option>
+                    <option value="off">OFF</option>
+                    <option value="auto">AUTO</option>
+                  </select>
+                </div>
+
+                <!-- Prompt Batch Size (-b) -->
+                <div class="unrestricted-control-card engine-advanced-only" style="display:none;">
+                  <label>Prompt Batch Size (-b / 1 to 4096):</label>
+                  <div class="unrestricted-slider-row">
+                    <input type="range" id="sl-nbatch" min="1" max="4096" step="64" value="512">
+                    <input type="number" id="num-nbatch" min="1" max="8192" step="64" value="512">
+                  </div>
+                </div>
+
+                <!-- Physical Micro-Batch (-ub) -->
+                <div class="unrestricted-control-card engine-advanced-only" style="display:none;">
+                  <label>Micro-Batch Size (-ub / 1 to 4096):</label>
+                  <div class="unrestricted-slider-row">
+                    <input type="range" id="sl-nubatch" min="1" max="4096" step="64" value="512">
+                    <input type="number" id="num-nubatch" min="1" max="4096" step="64" value="512">
+                  </div>
+                </div>
+
+                <!-- RoPE Frequency Base -->
+                <div class="unrestricted-control-card engine-advanced-only" style="display:none;">
+                  <label>RoPE Frequency Base (10k to 10M):</label>
+                  <div class="unrestricted-slider-row">
+                    <input type="range" id="sl-rope-base" min="10000" max="10000000" step="50000" value="1000000">
+                    <input type="number" id="num-rope-base" min="1000" max="100000000" step="10000" value="1000000">
+                  </div>
+                </div>
+
+                <!-- RoPE Frequency Scale -->
+                <div class="unrestricted-control-card engine-advanced-only" style="display:none;">
+                  <label>RoPE Frequency Scale (0.01 to 10.0):</label>
+                  <div class="unrestricted-slider-row">
+                    <input type="range" id="sl-rope-scale" min="0.01" max="10.0" step="0.05" value="1.0">
+                    <input type="number" id="num-rope-scale" min="0.001" max="100.0" step="0.01" value="1.0">
+                  </div>
+                </div>
+
+                <!-- Multi-GPU Split Mode -->
+                <div class="unrestricted-control-card engine-advanced-only" style="display:none;">
+                  <label>Split Mode (-sm):</label>
+                  <select id="harness-split-mode" class="form-select">
+                    <option value="none" selected>none (Single device / Dedicated per port)</option>
+                    <option value="layer">layer (Split layers evenly across GPUs)</option>
+                    <option value="row">row (Split matrix rows across GPUs)</option>
+                  </select>
+                </div>
+
+                <!-- KV Cache Defrag Threshold -->
+                <div class="unrestricted-control-card engine-advanced-only" style="display:none;">
+                  <label>KV Defrag Threshold (0.0 to 1.0):</label>
+                  <div class="unrestricted-slider-row">
+                    <input type="range" id="sl-defrag" min="0.0" max="1.0" step="0.05" value="0.10">
+                    <input type="number" id="num-defrag" min="0.0" max="1.0" step="0.05" value="0.10">
+                  </div>
+                </div>
+
+                <!-- Speculative Draft Tokens -->
+                <div class="unrestricted-control-card engine-advanced-only" style="display:none;">
+                  <label>Speculative Lookahead (γ / 0 to 32):</label>
+                  <div class="unrestricted-slider-row">
+                    <input type="range" id="sl-draft-tokens" min="0" max="32" step="1" value="5">
+                    <input type="number" id="num-draft-tokens" min="0" max="64" step="1" value="5">
+                  </div>
+                </div>
+
+                <!-- Prompt Lookup Cache -->
+                <div class="unrestricted-control-card engine-advanced-only" style="display:none;">
+                  <label>N-Gram Lookup Cache (0 to 4096):</label>
+                  <div class="unrestricted-slider-row">
+                    <input type="range" id="sl-lookup-cache" min="0" max="4096" step="128" value="1024">
+                    <input type="number" id="num-lookup-cache" min="0" max="8192" step="128" value="1024">
+                  </div>
+                </div>
+
+                <!-- CPU Generation Threads (-t) -->
+                <div class="unrestricted-control-card engine-advanced-only" style="display:none;">
+                  <label>CPU Threads (-t / 1 to 64):</label>
+                  <div class="unrestricted-slider-row">
+                    <input type="range" id="sl-threads" min="1" max="64" step="1" value="8">
+                    <input type="number" id="num-threads" min="1" max="128" step="1" value="8">
+                  </div>
+                </div>
+
+                <!-- CPU Batch Processing Threads (-tb) -->
+                <div class="unrestricted-control-card engine-advanced-only" style="display:none;">
+                  <label>Batch CPU Threads (-tb / 1 to 64):</label>
+                  <div class="unrestricted-slider-row">
+                    <input type="range" id="sl-threads-batch" min="1" max="64" step="1" value="8">
+                    <input type="number" id="num-threads-batch" min="1" max="128" step="1" value="8">
+                  </div>
+                </div>
+
+                <!-- CPU Affinity Mask (-C) -->
+                <div class="unrestricted-control-card engine-advanced-only" style="display:none;">
+                  <label>CPU Affinity Mask (-C):</label>
+                  <input type="text" id="harness-cpu-mask" class="form-input" placeholder="e.g. 0xFF00 or 0-7" style="font-size:0.8rem; font-family:monospace;">
+                </div>
+
+                <!-- Strict CPU Placement -->
+                <div class="unrestricted-control-card engine-advanced-only" style="display:none;">
+                  <label>Strict CPU Placement (--cpu-strict):</label>
+                  <select id="harness-cpu-strict" class="form-select">
+                    <option value="auto" selected>auto (OS Default)</option>
+                    <option value="1">1: Strict Cores</option>
+                    <option value="0">0: Flexible</option>
+                  </select>
+                </div>
+
+                <!-- Process Priority -->
+                <div class="unrestricted-control-card engine-advanced-only" style="display:none;">
+                  <label>Process Priority (--prio):</label>
+                  <select id="harness-prio" class="form-select">
+                    <option value="auto" selected>auto (Standard)</option>
+                    <option value="0">0: Normal</option>
+                    <option value="1">1: Medium High</option>
+                    <option value="2">2: High Priority</option>
+                    <option value="3">3: Realtime</option>
+                  </select>
+                </div>
+
+                <!-- Polling Loop (--poll) -->
+                <div class="unrestricted-control-card engine-advanced-only" style="display:none;">
+                  <label>CPU Polling Mode (--poll / 0 to 100):</label>
+                  <div class="unrestricted-slider-row">
+                    <input type="range" id="sl-poll" min="0" max="100" step="5" value="0">
+                    <input type="number" id="num-poll" min="0" max="100" step="1" value="0">
+                  </div>
+                </div>
+
+                <!-- NUMA Optimization -->
+                <div class="unrestricted-control-card engine-advanced-only" style="display:none;">
+                  <label>NUMA Architecture (--numa):</label>
+                  <select id="harness-numa" class="form-select">
+                    <option value="none" selected>none (Single Socket / Disabled)</option>
+                    <option value="distribute">distribute (Spread memory across nodes)</option>
+                    <option value="isolate">isolate (Bind to current NUMA node)</option>
+                    <option value="numactl">numactl (Rely on OS wrapper)</option>
+                  </select>
+                </div>
+
+                <!-- GPU Device Mapping (-dev) -->
+                <div class="unrestricted-control-card engine-advanced-only" style="display:none;">
+                  <label>Device Mapping (-dev / --device):</label>
+                  <input type="text" id="harness-device" class="form-input" placeholder="llama.cpp --device, e.g. Vulkan0 or CUDA0" style="font-size:0.8rem; font-family:monospace;">
+                </div>
+
+                <!-- Tensor Split Proportions (-ts) -->
+                <div class="unrestricted-control-card engine-advanced-only" style="display:none;">
+                  <label>Tensor Split (-ts):</label>
+                  <input type="text" id="harness-tensor-split" class="form-input" placeholder="e.g. 12,8 (VRAM proportions)" style="font-size:0.8rem; font-family:monospace;">
+                </div>
+
+                <!-- Main GPU (-mg) -->
+                <div class="unrestricted-control-card engine-advanced-only" style="display:none;">
+                  <label>Main GPU Index (-mg):</label>
+                  <input type="number" id="num-main-gpu" class="form-input" min="0" max="8" step="1" value="0" style="font-size:0.8rem;">
+                </div>
+
+                <!-- CPU MoE Offloading -->
+                <div class="unrestricted-control-card engine-advanced-only" style="display:none;">
+                  <label>CPU MoE Offload (-cmoe):</label>
+                  <label style="display:flex; align-items:center; gap:8px; font-size:0.75rem; margin-top:6px; cursor:pointer;">
+                    <input type="checkbox" id="harness-cpu-moe"> Keep MoE Experts in System RAM
+                  </label>
+                </div>
+
+                <!-- N CPU MoE Experts -->
+                <div class="unrestricted-control-card engine-advanced-only" style="display:none;">
+                  <label>N CPU MoE Experts (-ncmoe / 0 to 64):</label>
+                  <div class="unrestricted-slider-row">
+                    <input type="range" id="sl-nc-moe" min="0" max="64" step="1" value="0">
+                    <input type="number" id="num-nc-moe" min="0" max="128" step="1" value="0">
+                  </div>
+                </div>
+
+                <!-- N CPU FFN Layers -->
+                <div class="unrestricted-control-card engine-advanced-only" style="display:none;">
+                  <label>N CPU FFN Layers (-ncffn / 0 to 64):</label>
+                  <div class="unrestricted-slider-row">
+                    <input type="range" id="sl-nc-ffn" min="0" max="64" step="1" value="0">
+                    <input type="number" id="num-nc-ffn" min="0" max="128" step="1" value="0">
+                  </div>
+                </div>
+
+                <!-- Dynamic Layer Fit (--fit) -->
+                <div class="unrestricted-control-card engine-advanced-only" style="display:none;">
+                  <label>VRAM Auto-Fit (--fit):</label>
+                  <select id="harness-fit" class="form-select">
+                    <option value="off" selected>off (Fixed -ngl layers)</option>
+                    <option value="on">on (Auto-fit maximum layers into VRAM)</option>
+                  </select>
+                </div>
+
+                <!-- Fit Target Margin -->
+                <div class="unrestricted-control-card engine-advanced-only" style="display:none;">
+                  <label>Fit Target Free Margin (--fit-target MB):</label>
+                  <div class="unrestricted-slider-row">
+                    <input type="range" id="sl-fit-target" min="128" max="4096" step="128" value="512">
+                    <input type="number" id="num-fit-target" min="0" max="16384" step="128" value="512">
+                  </div>
+                </div>
+
+                <!-- Weight Loading Mode (--load-mode) -->
+                <div class="unrestricted-control-card engine-advanced-only" style="display:none;">
+                  <label>Model Load Mode (-lm / --load-mode):</label>
+                  <select id="harness-load-mode" class="form-select">
+                    <option value="auto" selected>auto (Smart mmap/mlock)</option>
+                    <option value="mmap">mmap (Memory Mapped)</option>
+                    <option value="mlock">mlock (Lock in physical RAM)</option>
+                    <option value="mmap+mlock">mmap + mlock</option>
+                    <option value="none">none (Standard file read)</option>
+                    <option value="dio">dio (Direct I/O)</option>
+                  </select>
+                </div>
+
+                <!-- Lazy Weight Loading -->
+                <div class="unrestricted-control-card engine-advanced-only" style="display:none;">
+                  <label>Lazy Weight Loading (-lzm):</label>
+                  <label style="display:flex; align-items:center; gap:8px; font-size:0.75rem; margin-top:6px; cursor:pointer;">
+                    <input type="checkbox" id="harness-lazy-mode"> Load model weights on demand
+                  </label>
+                </div>
+
+                <!-- Unified KV Cache -->
+                <div class="unrestricted-control-card engine-advanced-only" style="display:none;">
+                  <label>Unified KV Cache (-kvu):</label>
+                  <div style="display:flex; flex-direction:column; gap:4px; margin-top:4px;">
+                    <label style="display:flex; align-items:center; gap:8px; font-size:0.75rem; cursor:pointer;">
+                      <input type="checkbox" id="harness-kv-unified"> Unify KV Cache across slots
+                    </label>
+                    <label style="display:flex; align-items:center; gap:8px; font-size:0.75rem; cursor:pointer;">
+                      <input type="checkbox" id="harness-kv-unified-slot"> Unify KV Cache per slot
+                    </label>
+                  </div>
+                </div>
+
+                <!-- KV Cache RAM Limit -->
+                <div class="unrestricted-control-card engine-advanced-only" style="display:none;">
+                  <label>KV Cache RAM Ceiling (--cache-ram MB):</label>
+                  <div class="unrestricted-slider-row">
+                    <input type="range" id="sl-cache-ram" min="0" max="65536" step="512" value="0">
+                    <input type="number" id="num-cache-ram" min="0" max="262144" step="512" value="0">
+                  </div>
+                </div>
+
+                <!-- Cache Idle Slots -->
+                <div class="unrestricted-control-card engine-advanced-only" style="display:none;">
+                  <label>Cache Idle Slot Eviction (--cache-idle-slots):</label>
+                  <select id="harness-cache-idle" class="form-select">
+                    <option value="auto" selected>auto (Default behavior)</option>
+                    <option value="1">1: Evict idle slots</option>
+                    <option value="0">0: Retain idle slots</option>
+                  </select>
+                </div>
+
+                <!-- Cache Reuse Min Tokens -->
+                <div class="unrestricted-control-card engine-advanced-only" style="display:none;">
+                  <label>Cache Reuse Chunk (--cache-reuse tokens):</label>
+                  <div class="unrestricted-slider-row">
+                    <input type="range" id="sl-cache-reuse" min="0" max="4096" step="64" value="0">
+                    <input type="number" id="num-cache-reuse" min="0" max="16384" step="64" value="0">
+                  </div>
+                </div>
+
+                <!-- Context Shift & Overflow -->
+                <div class="unrestricted-control-card engine-advanced-only" style="display:none;">
+                  <label>Context Shift on Overflow:</label>
+                  <div style="display:flex; flex-direction:column; gap:4px; margin-top:4px;">
+                    <label style="display:flex; align-items:center; gap:8px; font-size:0.75rem; cursor:pointer;">
+                      <input type="checkbox" id="harness-context-shift" checked> Enable Context Shift
+                    </label>
+                    <label style="display:flex; align-items:center; gap:8px; font-size:0.75rem; cursor:pointer;">
+                      <input type="checkbox" id="harness-no-kv-offload"> Force KV Cache into System RAM (--no-kv-offload)
+                    </label>
+                  </div>
+                </div>
+
+                <!-- Context Checkpoints (-ctxcp) -->
+                <div class="unrestricted-control-card engine-advanced-only" style="display:none;">
+                  <label>Context Checkpoints (-ctxcp / 0 to 64):</label>
+                  <div class="unrestricted-slider-row">
+                    <input type="range" id="sl-ctx-cp" min="0" max="64" step="1" value="0">
+                    <input type="number" id="num-ctx-cp" min="0" max="256" step="1" value="0">
+                  </div>
+                </div>
+
+                <!-- Checkpoint Min Step (-cms) -->
+                <div class="unrestricted-control-card engine-advanced-only" style="display:none;">
+                  <label>Checkpoint Min Step (-cms / 0 to 1024):</label>
+                  <div class="unrestricted-slider-row">
+                    <input type="range" id="sl-cms" min="0" max="1024" step="16" value="0">
+                    <input type="number" id="num-cms" min="0" max="8192" step="16" value="0">
+                  </div>
+                </div>
+
+                <!-- Continuous Batching (-cb) -->
+                <div class="unrestricted-control-card engine-advanced-only" style="display:none;">
+                  <label>Continuous Batching (-cb):</label>
+                  <label style="display:flex; align-items:center; gap:8px; font-size:0.75rem; margin-top:6px; cursor:pointer;">
+                    <input type="checkbox" id="harness-cont-batching"> Enable continuous slot batching
+                  </label>
+                </div>
+
+                <!-- RoPE Scaling Algorithm -->
+                <div class="unrestricted-control-card engine-advanced-only" style="display:none;">
+                  <label>RoPE Scaling Algorithm (--rope-scaling):</label>
+                  <select id="harness-rope-scaling" class="form-select">
+                    <option value="none" selected>none (Native RoPE)</option>
+                    <option value="linear">linear (Linear Context Extension)</option>
+                    <option value="yarn">yarn (YaRN High-Context Extension)</option>
+                  </select>
+                </div>
+
+                <!-- Reasoning Mode (-rea) -->
+                <div class="unrestricted-control-card engine-advanced-only" style="display:none;">
+                  <label>Reasoning Extraction (-rea / --reasoning):</label>
+                  <select id="harness-reasoning" class="form-select">
+                    <option value="auto" selected>auto (Auto-detect thinking tokens)</option>
+                    <option value="on">on (Force reasoning token parsing)</option>
+                    <option value="off">off (Raw generation output)</option>
+                  </select>
+                </div>
+
+                <!-- Reasoning Format -->
+                <div class="unrestricted-control-card engine-advanced-only" style="display:none;">
+                  <label>Reasoning Format (--reasoning-format):</label>
+                  <select id="harness-reasoning-format" class="form-select">
+                    <option value="none" selected>none (Model Default)</option>
+                    <option value="deepseek">deepseek (&lt;think&gt;...&lt;/think&gt;)</option>
+                    <option value="chatml">chatml (&lt;|thought|&gt;)</option>
+                  </select>
+                </div>
+
+                <!-- Reasoning Effort -->
+                <div class="unrestricted-control-card engine-advanced-only" style="display:none;">
+                  <label>Reasoning Effort (0.0 to 1.0):</label>
+                  <div class="unrestricted-slider-row">
+                    <input type="range" id="sl-reasoning-effort" min="0.0" max="1.0" step="0.05" value="0.50">
+                    <input type="number" id="num-reasoning-effort" min="0.0" max="1.0" step="0.05" value="0.50">
+                  </div>
+                </div>
+
+                <!-- Reasoning Budget Tokens -->
+                <div class="unrestricted-control-card engine-advanced-only" style="display:none;">
+                  <label>Reasoning Budget Tokens (0 = unlimited):</label>
+                  <div class="unrestricted-slider-row">
+                    <input type="range" id="sl-reasoning-budget" min="0" max="32768" step="512" value="0">
+                    <input type="number" id="num-reasoning-budget" min="0" max="131072" step="512" value="0">
+                  </div>
+                </div>
+
+                <!-- Reasoning Preserve -->
+                <div class="unrestricted-control-card engine-advanced-only" style="display:none;">
+                  <label>Preserve Reasoning Tokens:</label>
+                  <label style="display:flex; align-items:center; gap:8px; font-size:0.75rem; margin-top:6px; cursor:pointer;">
+                    <input type="checkbox" id="harness-reasoning-preserve"> Keep reasoning tokens in session context
+                  </label>
+                </div>
+              </div>
+            </div>
+            </div>
+
+            <!-- Sub-Layer: VRAM Sizer & Model Deployment -->
+            <div class="econsole-layer" id="econsole-layer-sizer" style="display:none;">
+              <!-- Continuous Capacity & Target Node Selector -->
+            <div class="harness-card" style="margin-bottom:12px;">
+              <div class="harness-card-title">
+                <span>📐 TARGET COMPUTE NODE &amp; MODEL BINDING</span>
+                <span style="font-size:0.75rem; color:var(--term-text-muted);">[DYNAMIC POLLING • ZERO HARDCODED LABELS]</span>
+              </div>
+              <div class="harness-grid">
+                <div class="form-group" style="grid-column: span 2;">
+                  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:2px;">
+                    <label for="harness-node-select">Target Compute Node:</label>
+                    <div style="display:flex; align-items:center; gap:6px;">
+                      <span id="harness-node-status-badge" class="status-badge online" style="font-size:0.72rem; padding:2px 6px;">[PROBING...]</span>
+                      <button type="button" class="term-cmd-btn" onclick="refreshHarnessNodes()" title="Probe Cluster Nodes" style="padding:1px 6px; font-size:0.72rem;">🔄 REFRESH</button>
+                    </div>
+                  </div>
+                  <select id="harness-node-select" class="form-select" onchange="onHarnessNodeSelected(this.value)">
+                    <option value="node1_primary" selected>VM 102 Primary (GPU 0 - Port 8001)</option>
+                    <option value="node1_secondary">VM 102 Secondary (GPU 1 - Port 8002)</option>
+                    <option value="vm102_dual">VM 102 Dual-GPU Array (Ports 8001 + 8002)</option>
+                    <option value="local_workstation">Host Workstation (:8088)</option>
+                  </select>
+                  <div id="harness-node-meta" style="font-size:0.73rem; color:var(--term-text-muted); margin-top:2px;">
+                    Active Compute | Dynamic Polling Active
+                  </div>
+                </div>
+
+                <div class="form-group" style="grid-column: span 2;">
+                  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; flex-wrap:wrap; gap:6px;">
+                    <label for="harness-model-select" style="font-weight:bold;">Model (Scanned on Node):</label>
+                    <div style="display:flex; gap:6px; align-items:center;">
+                      <label for="harness-model-sort" style="font-size:0.72rem; color:var(--term-text-muted);">Sort:</label>
+                      <select id="harness-model-sort" class="form-select" onchange="onModelSortChanged(this.value)" style="padding:1px 6px; font-size:0.72rem; width:auto; height:24px;">
+                        <option value="date-desc" selected>📅 Date (Newest)</option>
+                        <option value="date-asc">📅 Date (Oldest)</option>
+                        <option value="size-desc">📦 Size (Largest)</option>
+                        <option value="size-asc">📦 Size (Smallest)</option>
+                        <option value="name-asc">🔤 Name (A-Z)</option>
+                        <option value="name-desc">🔤 Name (Z-A)</option>
+                      </select>
+                      <button type="button" class="term-cmd-btn" onclick="refreshNodeModels()" title="Rescan Models on Node" style="padding:1px 6px; font-size:0.72rem;">🔍 RESCAN</button>
+                    </div>
+                  </div>
+                  <select id="harness-model-select" class="form-select" onchange="onHarnessModelSelected(this.value)">
+                    <option value="coordinator" selected data-profile-tpl="{engines.coordinator.label} :{engines.coordinator.port}">Coordinator</option>
+                    <option value="worker" data-profile-tpl="{engines.worker.label} :{engines.worker.port}">Worker</option>
+                  </select>
+                  <!-- Model Info Banner (Ground-Truth Metadata) -->
+                  <div id="model-info-banner" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap:6px; margin-top:8px; padding:6px 10px; background:var(--term-bg); border:1px solid var(--term-border-dim); font-size:0.75rem; font-family:var(--font-mono);">
+                    <div><span style="color:var(--term-text-muted);">Model: </span><strong id="info-model-name" style="color:var(--term-accent-gold);">--</strong></div>
+                    <div><span style="color:var(--term-text-muted);">Disk Size: </span><strong id="info-model-size" style="color:var(--term-accent-cyan, #00ced1);">-- GB</strong></div>
+                    <div><span style="color:var(--term-text-muted);">Quant: </span><strong id="info-model-quant">--</strong></div>
+                    <div><span style="color:var(--term-text-muted);">Arch: </span><strong id="info-model-arch">--</strong></div>
+                    <div><span style="color:var(--term-text-muted);">Max Ctx: </span><strong id="info-model-ctx">--</strong></div>
+                    <div><span style="color:var(--term-text-muted);">Status: </span><span id="info-model-status" class="status-badge" style="font-size:0.68rem; padding:1px 4px;">--</span></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+              <!-- Download Model Card -->
+            <div class="harness-card" style="margin-bottom:12px;">
+              <div class="harness-card-title">
+                <span>📥 DOWNLOAD MODEL (HUGGING FACE / DIRECT URL)</span>
+                <span id="model-dl-status-badge" class="status-badge" style="font-size:0.72rem; padding:1px 6px; background:var(--term-surface-dim); border:1px solid var(--term-border-dim); color:var(--term-text-muted);">READY</span>
+              </div>
+              <div style="display:flex; flex-direction:column; gap:8px;">
+                <div style="display:grid; grid-template-columns: 1fr 220px auto; gap:8px; align-items:end;">
+                  <div class="form-group" style="margin:0;">
+                    <label for="model-dl-url" style="font-size:0.75rem;">Model URL (Hugging Face or Direct GGUF):</label>
+                    <input type="text" id="model-dl-url" class="form-input" placeholder="https://huggingface.co/.../model.gguf or direct URL" oninput="onModelDownloadUrlChange(this.value)" style="font-size:0.8rem; font-family:var(--font-mono);">
+                  </div>
+                  <div class="form-group" style="margin:0;">
+                    <label for="model-dl-filename" style="font-size:0.75rem;">Save Filename:</label>
+                    <input type="text" id="model-dl-filename" class="form-input" placeholder="model.gguf" style="font-size:0.8rem; font-family:var(--font-mono);">
+                  </div>
+                  <div style="display:flex; gap:6px;">
+                    <button type="button" id="btn-start-download" class="term-cmd-btn" onclick="startModelDownload()" style="padding:4px 12px; font-weight:bold; background:var(--term-accent-primary, #008080); color:#fff;">⬇️ DOWNLOAD</button>
+                    <button type="button" id="btn-cancel-download" class="term-cmd-btn" onclick="cancelModelDownload()" style="display:none; padding:4px 10px; background:#b22222; color:#fff;">🛑 CANCEL</button>
+                  </div>
+                </div>
+
+                <!-- Progress Bar Box (Hidden when idle) -->
+                <div id="model-dl-progress-box" style="display:none; margin-top:4px; padding:8px; background:var(--term-surface-dim); border:1px solid var(--term-border-dim);">
+                  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; font-size:0.75rem;">
+                    <span id="model-dl-info" style="font-family:var(--font-mono); font-weight:bold;">Connecting to server...</span>
+                    <span id="model-dl-percent" style="font-family:var(--font-mono); font-weight:bold; color:var(--term-accent-gold, #ffd700);">0%</span>
+                  </div>
+                  <div class="model-dl-track" style="width:100%; height:16px; background:#222; border:1px inset #808080; border-radius:2px; overflow:hidden; position:relative;">
+                    <div id="model-dl-bar" style="width:0%; height:100%; background:linear-gradient(90deg, #008080, #00ced1); transition:width 0.3s ease;"></div>
+                  </div>
+                  <div style="display:flex; justify-content:space-between; margin-top:4px; font-size:0.7rem; color:var(--term-text-muted); font-family:var(--font-mono);">
+                    <span id="model-dl-sizes">0 MB / 0 MB</span>
+                    <span id="model-dl-speed">0.0 MB/s</span>
+                    <span id="model-dl-eta">ETA: --:--</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+              <!-- Mathematical VRAM & KV-Cache Capacity Sizer -->
+            <div class="harness-card" style="margin-bottom:12px;">
+              <div class="harness-card-title">
+                <span>🧮 MATHEMATICAL VRAM &amp; KV-CACHE CAPACITY SIZER</span>
+                <span id="capacity-safe-badge" class="status-badge online" style="font-size:0.75rem;">FITS IN VRAM (SAFE)</span>
+              </div>
+              <div class="harness-form-grid" style="margin-bottom:12px;">
+                <div class="form-group">
+                  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                    <label for="capacity-model-params">Model Parameter Size (Billions):</label>
+                    <span id="capacity-param-badge" class="status-badge" style="font-size:0.68rem; padding:1px 6px; background:var(--term-surface-dim); color:var(--term-accent-gold); border:1px solid var(--term-border-dim);">⚡ AUTO-DETECTED</span>
+                  </div>
+                  <div style="display:flex; gap:6px; align-items:center;">
+                    <input type="number" id="capacity-model-params" class="form-input" min="0.01" max="2000" step="0.1" value="9.0" style="flex:1; font-weight:bold; font-family:var(--font-mono); font-size:0.85rem;" title="Model parameters in billions (Auto-detected from model name, fully editable)">
+                    <span style="font-size:0.8rem; font-weight:bold; color:var(--term-text-muted);">Billion (B)</span>
+                  </div>
+                </div>
+                <div class="form-group">
+                  <label for="capacity-weight-quant">Weight Quantization (GGUF):</label>
+                  <select id="capacity-weight-quant" class="form-select">
+                    <option value="iq1_s">IQ1_S (1.56 bpw)</option>
+                    <option value="iq1_m">IQ1_M (1.75 bpw)</option>
+                    <option value="iq2_xxs">IQ2_XXS (2.06 bpw)</option>
+                    <option value="iq2_xs">IQ2_XS (2.31 bpw)</option>
+                    <option value="iq2_s">IQ2_S (2.50 bpw)</option>
+                    <option value="iq2_m">IQ2_M (2.70 bpw)</option>
+                    <option value="iq3_xxs">IQ3_XXS (3.06 bpw)</option>
+                    <option value="iq3_xs">IQ3_XS (3.30 bpw)</option>
+                    <option value="iq3_s">IQ3_S (3.44 bpw)</option>
+                    <option value="iq3_m">IQ3_M (3.66 bpw)</option>
+                    <option value="q2_k">Q2_K (2.62 bpw)</option>
+                    <option value="q3_k_s">Q3_K_S (3.41 bpw)</option>
+                    <option value="q3_k_m">Q3_K_M (3.91 bpw)</option>
+                    <option value="q3_k_l">Q3_K_L (4.27 bpw)</option>
+                    <option value="iq4_nl">IQ4_NL (4.50 bpw)</option>
+                    <option value="iq4_xs">IQ4_XS (4.25 bpw)</option>
+                    <option value="q4_0">Q4_0 (4.55 bpw)</option>
+                    <option value="q4_1">Q4_1 (5.00 bpw)</option>
+                    <option value="q4_k_s">Q4_K_S (4.58 bpw)</option>
+                    <option value="q4_k_m" selected>Q4_K_M (4.85 bpw - Balanced)</option>
+                    <option value="q5_0">Q5_0 (5.54 bpw)</option>
+                    <option value="q5_1">Q5_1 (6.00 bpw)</option>
+                    <option value="q5_k_s">Q5_K_S (5.54 bpw)</option>
+                    <option value="q5_k_m">Q5_K_M (5.69 bpw - High Fidelity)</option>
+                    <option value="q6_k">Q6_K (6.56 bpw - Near Lossless)</option>
+                    <option value="q8_0">Q8_0 (8.50 bpw - Maximum Precision)</option>
+                    <option value="f16">F16 (16.00 bpw - Full Precision)</option>
+                    <option value="f32">F32 (32.00 bpw - 32-Bit Float)</option>
+                  </select>
+                </div>
+                <!-- Separate K and V Cache Quantization (Default F16 unquantized) -->
+                <div class="form-group">
+                  <label for="capacity-k-quant">K-Cache Quantization (ctk):</label>
+                  <select id="capacity-k-quant" class="form-select">
+                    <option value="f16" selected>F16 (16.0 bpw - Full Precision, Default)</option>
+                    <option value="q8_0">Q8_0 (8.0 bpw - 2x Compression)</option>
+                    <option value="q4_0">Q4_0 (4.0 bpw - 4x Compression)</option>
+                    <option value="q4_1">Q4_1 (4.5 bpw)</option>
+                    <option value="iq4_nl">IQ4_NL (4.5 bpw - Non-Linear)</option>
+                    <option value="q5_0">Q5_0 (5.0 bpw)</option>
+                    <option value="q5_1">Q5_1 (5.5 bpw)</option>
+                    <option value="f32">F32 (32.0 bpw - Full FP32)</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label for="capacity-v-quant">V-Cache Quantization (ctv):</label>
+                  <select id="capacity-v-quant" class="form-select">
+                    <option value="f16" selected>F16 (16.0 bpw - Full Precision, Default)</option>
+                    <option value="q8_0">Q8_0 (8.0 bpw - 2x Compression)</option>
+                    <option value="q4_0">Q4_0 (4.0 bpw - 4x Compression)</option>
+                    <option value="q4_1">Q4_1 (4.5 bpw)</option>
+                    <option value="iq4_nl">IQ4_NL (4.5 bpw - Non-Linear)</option>
+                    <option value="q5_0">Q5_0 (5.0 bpw)</option>
+                    <option value="q5_1">Q5_1 (5.5 bpw)</option>
+                    <option value="f32">F32 (32.0 bpw - Full FP32)</option>
+                  </select>
+                  <input type="hidden" id="capacity-kv-quant" value="f16">
+                </div>
+                <div class="form-group">
+                  <label for="capacity-slots-slider">Parallel Inference Slots (-np):</label>
+                  <div style="display:flex; gap:6px;">
+                    <select id="capacity-slots-slider" class="form-select" style="flex:1;">
+                      <option value="1" selected>1 Slot (Single User / Max Context)</option>
+                      <option value="2">2 Slots (Parallel Home + Tool)</option>
+                      <option value="4">4 Slots (Multi-Agent Swarm)</option>
+                      <option value="8">8 Slots (High Throughput)</option>
+                      <option value="16">16 Slots (Massive Concurrent)</option>
+                    </select>
+                    <input type="number" id="num-slots" class="form-input" placeholder="Slots" min="1" max="64" step="1" value="1" style="width:70px; font-size:0.75rem;" title="Custom parallel slots count">
+                  </div>
+                </div>
+                <div class="form-group">
+                  <label for="capacity-vram-select">Hardware VRAM / RAM Limit:</label>
+                  <div style="display:flex; gap:6px;">
+                    <select id="capacity-vram-select" class="form-select" style="flex:1;">
+                      <option value="6.0">Mobile GPU (6.0 GB)</option>
+                      <option value="8.0">GPU 1 Secondary (8.0 GB)</option>
+                      <option value="12.0" selected>GPU 0 Primary (12.0 GB)</option>
+                      <option value="16.0">Unified APU (16.0 GB)</option>
+                      <option value="20.0">Dual-GPU Array (20.0 GB)</option>
+                      <option value="24.0">RTX 3090 / 4090 (24.0 GB)</option>
+                      <option value="32.0">Local Workstation (32.0 GB)</option>
+                      <option value="48.0">Dual 24GB Array (48.0 GB)</option>
+                      <option value="64.0">System RAM Spillover (64.0 GB)</option>
+                      <option value="128.0">Server Host Array (128.0 GB)</option>
+                    </select>
+                    <input type="number" id="capacity-custom-vram" class="form-input" placeholder="Custom GB" min="1" max="2048" step="0.5" style="width:85px; font-size:0.75rem;" title="Enter custom VRAM or RAM capacity in GB">
+                  </div>
+                </div>
+              </div>
+
+              <!-- Context & GPU Offload Quick Adjusters -->
+              <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap:12px; margin-bottom:12px; padding:10px; background:var(--term-bg); border:1px solid var(--term-border-dim); border-radius:3px;">
+                <div>
+                  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                    <label style="font-size:0.75rem; font-weight:bold;">Context Length (-c):</label>
+                    <span id="capacity-ctx-badge" style="font-size:0.7rem; color:var(--term-accent-gold); font-family:var(--font-mono);">16,384 tokens</span>
+                  </div>
+                  <div style="display:flex; gap:8px; align-items:center;">
+                    <input type="range" id="capacity-ctx-slider" min="2048" max="131072" step="1024" value="16384" style="flex:1;">
+                    <input type="number" id="capacity-ctx-input" class="form-input" min="512" max="1048576" step="512" value="16384" style="width:90px; font-size:0.75rem; font-family:var(--font-mono); font-weight:bold;">
+                  </div>
+                </div>
+                <div>
+                  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                    <label style="font-size:0.75rem; font-weight:bold;">GPU Offload Layers (-ngl):</label>
+                    <button type="button" class="term-cmd-btn" onclick="document.getElementById('num-ngl').value=99; document.getElementById('sl-ngl').value=99; if(typeof recalculateHardwareCapacity==='function')recalculateHardwareCapacity();" style="padding:1px 6px; font-size:0.68rem; background:var(--term-accent-cyan, #00ced1); color:#000; font-weight:bold;">⚡ ALL TO GPU</button>
+                  </div>
+                  <div style="display:flex; gap:8px; align-items:center;">
+                    <input type="range" id="capacity-ngl-slider" min="0" max="128" step="1" value="99" oninput="document.getElementById('num-ngl').value=this.value; document.getElementById('sl-ngl').value=this.value; if(typeof recalculateHardwareCapacity==='function')recalculateHardwareCapacity();" style="flex:1;">
+                    <input type="number" id="capacity-ngl-input" class="form-input" min="0" max="256" step="1" value="99" oninput="document.getElementById('num-ngl').value=this.value; document.getElementById('capacity-ngl-slider').value=this.value; if(typeof recalculateHardwareCapacity==='function')recalculateHardwareCapacity();" style="width:70px; font-size:0.75rem; font-family:var(--font-mono); font-weight:bold;">
+                  </div>
+                </div>
+              </div>
+
+              <!-- LM Studio Fast Toggle Switches -->
+              <div style="display:flex; flex-wrap:wrap; gap:14px; margin-bottom:12px; padding:8px 10px; background:var(--term-surface-dim); border:1px solid var(--term-border-dim); font-size:0.75rem;">
+                <label style="display:flex; align-items:center; gap:6px; cursor:pointer;" title="Keep KV cache in VRAM rather than spilling to RAM">
+                  <input type="checkbox" id="harness-gpu-kv" checked> Offload KV Cache to GPU
+                </label>
+                <label style="display:flex; align-items:center; gap:6px; cursor:pointer;" title="Lock model weights in physical RAM to prevent swapping">
+                  <input type="checkbox" id="harness-mlock"> Lock Weights in RAM (--mlock)
+                </label>
+                <label style="display:flex; align-items:center; gap:6px; cursor:pointer;" title="Memory-map model files for instant zero-copy loading">
+                  <input type="checkbox" id="harness-mmap" checked> Memory Mapping (--mmap)
+                </label>
+                <label style="display:flex; align-items:center; gap:6px; cursor:pointer;" title="Unified KV memory across parallel execution slots">
+                  <input type="checkbox" id="harness-kv-unified"> Unified KV Cache (-kvu)
+                </label>
+                <label style="display:flex; align-items:center; gap:6px; cursor:pointer;" title="Automatically shift context window on prompt overflow">
+                  <input type="checkbox" id="harness-context-shift" checked> Context Shift
+                </label>
+              </div>
+
+              <!-- Capacity Live Readout -->
+              <div class="capacity-readout">
+                <div class="metric-item">
+                  <span class="metric-label">Base Weights:</span>
+                  <span class="metric-val" id="cap-weights-gb">-- GB</span>
+                </div>
+                <div class="metric-item">
+                  <span class="metric-label">KV Cache:</span>
+                  <span class="metric-val" id="cap-kv-gb">-- GB</span>
+                </div>
+                <div class="metric-item">
+                  <span class="metric-label">Activations:</span>
+                  <span class="metric-val" id="cap-act-gb">-- GB</span>
+                </div>
+                <div class="metric-item">
+                  <span class="metric-label">Total Required:</span>
+                  <span class="metric-val" id="cap-total-gb">-- GB</span>
+                </div>
+                <div class="metric-item">
+                  <span class="metric-label">VRAM Headroom:</span>
+                  <span class="metric-val" id="cap-headroom-gb">-- GB</span>
+                </div>
+                <div class="metric-item" style="grid-column: span 2;">
+                  <span class="metric-label">Offload Verdict:</span>
+                  <span id="cap-verdict-badge" style="font-weight:bold; padding:2px 6px; border-radius:2px; font-size:0.76rem; background:#166534; color:#fff;">[FITS IN VRAM]</span>
+                </div>
+              </div>
+
+              <!-- Action Ribbon -->
+              <div style="margin-top:12px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+                <div id="deploy-summary-text" style="font-size:0.75rem; color:var(--term-text-muted); font-family:var(--font-mono);">
+                  Ready to load onto selected node.
+                </div>
+                <div style="display:flex; gap:8px;">
+                  <button type="button" class="term-cmd-btn" id="btn-unload-model" onclick="unloadActiveModel()" style="background:#8b0000; color:#fff; font-weight:bold; padding:6px 14px;" title="Unload active model service and free GPU VRAM">
+                    🛑 EJECT / UNLOAD MODEL
+                  </button>
+                  <button type="button" class="term-cmd-btn" id="btn-deploy-calculated-stack" onclick="deploySelectedModelToNode()" style="background:var(--term-accent-blue); color:#fff; font-weight:bold; padding:6px 16px;">
+                    ⚡ LOAD MODEL ONTO NODE
+                  </button>
+                </div>
+              </div>
+            </div>
+            </div>
+
+            <!-- Sub-Layer: Playground & Debug Stream -->
+            <div class="econsole-layer" id="econsole-layer-debug" style="display:none;">
+              <!-- Model Inference Playground & Probe -->
+            <div class="harness-card" id="harness-playground-card">
+              <div class="harness-card-title" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+                <span>🤖 MODEL INFERENCE PLAYGROUND &amp; STREAMING PROBE</span>
+                <span class="status-badge online" id="playground-status-badge">🟢 READY</span>
+              </div>
+              <div style="display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:10px; padding:8px; background:var(--term-bg); border:1px solid var(--term-border-dim); border-radius:4px;">
+                <div style="display:flex; align-items:center; gap:6px;">
+                  <label style="font-size:0.75rem; font-weight:bold; color:var(--term-text-muted);">TARGET MODEL:</label>
+                  <select id="playground-model-select" class="form-select" style="font-size:0.78rem; padding:3px 8px;">
+                    <option value="coordinator" selected data-profile-tpl="{engines.coordinator.label} :{engines.coordinator.port}">Coordinator</option>
+                    <option value="worker" data-profile-tpl="{engines.worker.label} :{engines.worker.port}">Worker</option>
+                  </select>
+                </div>
+              </div>
+              <div style="margin-bottom:8px;">
+                <textarea id="playground-prompt-input" class="form-input" rows="3" style="width:100%; font-family:monospace; font-size:0.82rem; resize:vertical;" placeholder="Enter model test prompt, coding task, or reasoning challenge..."></textarea>
+              </div>
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap; gap:8px;">
+                <div style="display:flex; gap:6px;">
+                  <button type="button" class="term-cmd-btn" id="playground-run-btn" onclick="runPlaygroundInference()" style="background:var(--term-accent-blue); color:#fff; font-weight:bold; padding:4px 14px;">▶ RUN INFERENCE</button>
+                  <button type="button" class="term-cmd-btn" id="playground-stop-btn" onclick="stopPlaygroundInference()" style="display:none; color:var(--term-accent-red); font-weight:bold;">⏹ STOP</button>
+                  <button type="button" class="term-cmd-btn" onclick="clearPlayground()">[CLEAR]</button>
+                </div>
+                <div id="playground-metrics-ribbon" style="font-family:monospace; font-size:0.75rem; color:var(--term-accent-gold); display:flex; gap:12px; flex-wrap:wrap;">
+                  <span>⏱️ TTFT: <strong id="m-ttft">-- ms</strong></span>
+                  <span>⚡ SPEED: <strong id="m-tps">-- tok/s</strong></span>
+                  <span>📊 TOKENS: <strong id="m-tokens">0</strong></span>
+                  <span>⏳ ELAPSED: <strong id="m-elapsed">0.0s</strong></span>
+                </div>
+              </div>
+              <!-- Dual Parallel Streams: Realtime Reasoning & Response -->
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                <div style="font-size:0.72rem; font-weight:bold; color:var(--term-text-muted);">PARALLEL INFERENCE STREAMS:</div>
+                <div style="display:flex; gap:6px;">
+                  <button type="button" class="term-cmd-btn" id="playground-toggle-reasoning-btn" onclick="togglePlaygroundReasoning()" style="font-size:0.7rem; color:var(--term-accent-gold);">[🧠 TOGGLE REASONING]</button>
+                  <button type="button" class="term-cmd-btn" id="playground-parallel-view-btn" onclick="togglePlaygroundParallelView()" style="font-size:0.7rem; color:var(--term-accent-green);">[⚡ PARALLEL VIEW: ON]</button>
+                </div>
+              </div>
+              <div class="chat-parallel-streams" id="playground-streams-grid" style="margin-top:0;">
+                <div class="stream-pane stream-pane-reasoning" id="playground-reasoning-pane">
+                  <div class="stream-pane-header">
+                    <span style="color:var(--term-accent-gold); font-weight:bold;">🧠 REASONING STREAM</span>
+                    <span id="playground-reasoning-count" class="stream-live-tag" style="color:var(--term-accent-gold);">0 chars</span>
+                  </div>
+                  <pre id="playground-reasoning-content" class="reasoning-stream-content" style="min-height:160px; max-height:320px;">No active reasoning thoughts extracted yet.</pre>
+                </div>
+                <div class="stream-pane stream-pane-response" id="playground-output-pane">
+                  <div class="stream-pane-header">
+                    <span style="color:var(--term-accent-green); font-weight:bold;">⚡ RESPONSE STREAM</span>
+                    <span id="playground-status-badge" class="stream-live-tag" style="color:var(--term-accent-green);">IDLE</span>
+                  </div>
+                  <div id="playground-output-stream" class="response-stream-content" style="min-height:160px; max-height:320px; font-family:monospace; font-size:0.82rem; line-height:1.5; white-space:pre-wrap;">Awaiting prompt dispatch...</div>
+                </div>
+              </div>
+            </div>
+
+              <div class="harness-card" style="margin-top:12px;">
+                <!-- Sub-Layer: Debug Token Stream -->
+            <div class="econsole-layer" id="econsole-layer-debug" style="display:none;">
+              <div class="harness-card-title" style="margin-bottom:8px;">
+                <span>🔍 DEBUG TOKEN STREAM — Real-Time Inference Tracing</span>
+              </div>
+              <div style="display:flex; gap:8px; margin-bottom:8px;">
+                <textarea id="econsole-debug-prompt" class="form-input" rows="3" placeholder="Enter debug prompt... (sent to the selected engine's /completion endpoint with timings_per_token and post_sampling_probs)" style="flex:1; font-family:var(--font-mono); font-size:0.8rem; padding:8px; resize:vertical;"></textarea>
+                <div style="display:flex; flex-direction:column; gap:4px;">
+                  <button type="button" class="econsole-btn econsole-btn-primary" id="econsole-debug-send">[▶ SEND]</button>
+                  <button type="button" class="econsole-btn econsole-btn-danger" id="econsole-debug-stop">[■ STOP]</button>
+                </div>
+              </div>
+              <div id="econsole-debug-terminal" class="econsole-terminal">
+                <span style="color:var(--term-text-muted);">Token stream will appear here...</span>
+              </div>
+              <div style="margin-top:6px; font-size:0.7rem; color:var(--term-text-muted);">
+                Hover tokens for top-5 probabilities &amp; per-token timing. 
+                <span class="econsole-token-high">█ High confidence</span> 
+                <span class="econsole-token-medium">█ Medium (&lt;30%)</span> 
+                <span class="econsole-token-low">█ Low (&lt;10%)</span>
+              </div>
+            </div>
+              </div>
+            </div>
+
+            <!-- Sub-Layer: System Log Viewer -->
+            <div class="econsole-layer" id="econsole-layer-logs" style="display:none;">
+              <div class="harness-card-title" style="margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
+                <span>📜 SYSTEM LOG VIEWER — Journalctl Stream</span>
+                <div style="display:flex; gap:6px; align-items:center;">
+                  <select class="topbar-select" id="econsole-log-service" style="font-size:0.78rem; padding:2px 6px;">
+                    <option value="llama-coordinator">llama-coordinator (:8001)</option>
+                    <option value="llama-worker">llama-worker (:8002)</option>
+                    <option value="llama-embedder">llama-embedder (:8003)</option>
+                    <option value="vision-server">vision-server (:8004)</option>
+                    <option value="cluster-mcp">cluster-mcp (:8765)</option>
+                    <option value="assembly-hall">assembly-hall (:8766)</option>
+                    <option value="wildlife-sentry">wildlife-sentry</option>
+                  </select>
+                  <button type="button" class="term-cmd-btn" id="econsole-log-start" style="background:var(--term-accent-green, #16a34a); color:#fff;">[▶ FETCH]</button>
+                  <button type="button" class="term-cmd-btn" id="econsole-log-stop" style="color:var(--term-accent-red);">[■ STOP]</button>
+                </div>
+              </div>
+              <div id="econsole-log-terminal" class="econsole-terminal" style="min-height:400px;">
+                <span style="color:var(--term-text-muted);">Select a service and click FETCH to view logs...</span>
+              </div>
+            </div>
+
+          </div>
+
+          </div>
+
+          <!-- =================================================================
+               LAYER 3: AGENT DNA & ROLES STUDIO
+               ================================================================= -->
+          <div class="engine-layer-content engine-layer" id="engine-layer-agentdna" style="display:none;">
+            <div class="harness-card-title" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:10px;">
+              <span>🧬 SOVEREIGN AGENT DNA STUDIO &amp; FOREVER PERSISTENCE</span>
+              <button type="button" class="term-cmd-btn" onclick="fetchAgentDnaList()">[🔄 REFRESH ROSTER]</button>
+            </div>
+            <div style="display:grid; grid-template-columns:300px 1fr; gap:12px; min-height:500px;">
+              <div class="harness-card" style="margin-bottom:0; display:flex; flex-direction:column;">
+                <div style="font-weight:bold; color:var(--term-text-bright); margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
+                  <span>🤖 REGISTERED AGENTS</span>
+                  <span style="font-size:0.72rem; color:var(--term-accent-gold);">.agent.dna</span>
+                </div>
+                <div id="agent-dna-list" style="flex:1; overflow-y:auto; border:1px solid var(--term-border-dim); border-radius:3px; padding:6px; background:var(--term-bg);">
+                  <div style="color:var(--term-text-muted); font-size:0.75rem; text-align:center; padding:1rem;">Loading agent roster...</div>
+                </div>
+              </div>
+              <div class="harness-card" id="agent-dna-details-panel" style="margin-bottom:0;">
+                <div style="color:var(--term-text-muted); padding:2rem; text-align:center;">Select an agent to inspect DNA.</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- =================================================================
+               LAYER 4: MEMORY HUD & EMBEDDER RAG
+               ================================================================= -->
+          <div class="engine-layer-content engine-layer" id="engine-layer-memory" style="display:none;">
+            <div class="harness-card-title" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:10px;">
+              <span>🧠 VALKEY A-MEM WORKING MEMORY (:6379)</span>
+              <div style="display:flex; gap:6px; align-items:center;">
+                <button type="button" class="term-cmd-btn" onclick="openNewAmemModal()" style="background:var(--term-accent-blue); color:#fff; font-weight:bold;">[+ ADD ATOMIC CARD]</button>
+                <button type="button" class="term-cmd-btn" onclick="loadAmemCards()">[🔄 REFRESH]</button>
+              </div>
+            </div>
+            <div id="memory-banner-header" style="padding:8px 12px; background:var(--term-surface); border:1px solid var(--term-border-dim); border-radius:4px; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center; font-size:0.8rem; flex-wrap:wrap; gap:8px;">
+              <span>⚡ <strong>VALKEY IN-RAM ATOMIC FACT STORE</strong> (<code>config: cluster.valkey_url</code>)</span>
+              <div style="display:flex; gap:8px; align-items:center;">
+                <span class="status-badge online" id="amem-total-badge">🟢 189 CARDS</span>
+                <span style="font-size:0.75rem; color:var(--term-text-muted);" id="amem-avg-badge">(&lt; 35 tok/card avg)</span>
+              </div>
+            </div>
+            <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:12px; padding:6px; background:var(--term-bg); border:1px solid var(--term-border-dim); border-radius:4px;">
+              <div style="display:flex; gap:4px; flex-wrap:wrap; align-items:center;" id="amem-category-chips">
+                <button type="button" class="preset-btn active" id="amem-cat-all" onclick="filterAmemCategory('all')">[ALL]</button>
+                <button type="button" class="preset-btn" id="amem-cat-agent" onclick="filterAmemCategory('agent_contract')">[AGENT CONTRACTS]</button>
+                <button type="button" class="preset-btn" id="amem-cat-arch" onclick="filterAmemCategory('systems_architecture')">[ARCHITECTURE]</button>
+                <button type="button" class="preset-btn" id="amem-cat-hw" onclick="filterAmemCategory('hardware')">[HARDWARE &amp; TRUTH]</button>
+              </div>
+              <div style="margin-left:auto; display:flex; gap:6px; align-items:center;">
+                <input type="text" class="form-input" id="amem-search-input" placeholder="Search atomic facts or #tags..." style="width:220px; font-size:0.78rem; padding:3px 8px;" oninput="searchAmemCards()">
+                <button type="button" class="term-cmd-btn" onclick="searchAmemCards()">[SEARCH]</button>
+              </div>
+            </div>
+            <div class="memory-grid" id="memory-cards-container" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(320px, 1fr)); gap:10px;">
+              <!-- Memory cards rendered dynamically -->
+            </div>
+          </div>
+
+          <!-- =================================================================
+               LAYER 5: AUTONOMOUS LOOP & TRAINER
+               ================================================================= -->
+          <div class="engine-layer-content engine-layer" id="engine-layer-trainer" style="display:none;">
+            <div class="harness-card-title" style="margin-bottom:10px;">
+              <span>🎯 VM 102 GGUF QLoRA TRAINING PIPELINE &amp; 24/7 AUTONOMOUS LOOP</span>
+              <span style="font-size:0.75rem; color:var(--term-text-muted);">[70% GROUND TRUTH / 30% AUDITED RUMINATIONS]</span>
+            </div>
+            <div class="harness-card">
+              <div style="font-size:0.84rem; color:var(--term-text); line-height:1.6;">
+                <div>• <strong>Operational Invariant:</strong> Synthetic unreviewed sleep ruminations are permanently quarantined into <code>quarantine/</code> to prevent model collapse.</div>
+                <div>• <strong>Dataset Curation:</strong> 70% Real transcripts, code diffs, and HA events + 30% Tier-1 Frontier (Antigravity) audited proofs.</div>
+                <div>• <strong>OTA Model Hot-Reload:</strong> Broadcasts newly merged GGUF models over LAN without operator downtime.</div>
+              </div>
+          </div>
+        </div>
+
+          </div>
+      </section>
+
+      <!-- [F7: OBSIDIAN] -->
+      <section class="view-pane" id="view-obsidian">
+        <div class="harness-container" style="height:calc(100vh - 100px); display:flex; flex-direction:column;">
+          <div class="harness-card-title" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+              <span>📓 OBSIDIAN VAULT &amp; LIVE EXPLORER</span>
+              <span style="font-size:0.75rem; color:var(--term-text-muted); margin-left:6px;">VAULT:</span>
+              <select class="topbar-select" id="obsidian-database-select" onchange="onObsidianDatabaseChange()" style="font-size:0.75rem; padding:2px 6px;">
+                <option value="ai_obsidian" selected>🧠 ai_obsidian (AI Brain)</option>
+                <option value="obsidiannotes">👤 obsidiannotes (personal vault)</option>
+              </select>
+            </div>
+            <div style="display:flex; gap:6px; align-items:center;">
+              <span class="status-badge online" id="obsidian-notes-count-badge">🟢 0 NOTES</span>
+              <button type="button" class="term-cmd-btn" onclick="openQuickCaptureModal()" style="background:var(--term-accent-green, #16a34a); color:#fff; font-weight:bold;" title="Quick Capture URL, Note, or Photo to Obsidian">[📥 QUICK CAPTURE]</button>
+              <button type="button" class="term-cmd-btn" onclick="loadObsidianNotes(true)">[🔄 REFRESH]</button>
+              <button type="button" class="term-cmd-btn" onclick="syncObsidianToQdrant()" style="background:var(--term-accent-gold); color:#000; font-weight:bold;">[⚡ SYNC TO QDRANT]</button>
+            </div>
+          </div>
+
+          <!-- Mobile Mode Switch Bar for Obsidian (Active on screens <= 768px) -->
+          <div class="obsidian-mobile-bar" id="obsidian-mobile-bar" style="display:none; padding:4px 8px; background:var(--term-surface); border:1px solid var(--term-border-dim); border-radius:4px; margin-top:4px; justify-content:space-between; align-items:center;">
+            <div style="display:flex; gap:6px;">
+              <button type="button" class="term-cmd-btn active" id="obsidian-mobile-btn-list" onclick="setObsidianMobileMode('list')">📋 [NOTES LIST]</button>
+              <button type="button" class="term-cmd-btn" id="obsidian-mobile-btn-reader" onclick="setObsidianMobileMode('reader')">📖 [READER/EDITOR]</button>
+            </div>
+            <span id="obsidian-mobile-note-title" style="font-size:0.72rem; color:var(--term-text-muted); overflow:hidden; text-overflow:ellipsis; max-width:140px; white-space:nowrap;"></span>
+          </div>
+
+          <!-- Vault Browser 2-Pane Split -->
+          <div class="obsidian-vault-viewport" id="obsidian-vault-viewport" data-mobile-mode="list" style="flex:1; display:flex; min-height:0; gap:10px; margin-top:6px;">
+            <!-- Left Pane: Notes Directory & Search -->
+            <div class="obsidian-notes-pane" id="obsidian-notes-pane" style="width:340px; display:flex; flex-direction:column; background:var(--term-surface); border:1px solid var(--term-border-dim); border-radius:4px; padding:8px;">
+              <div style="margin-bottom:8px;">
+                <input type="text" class="form-input" id="obsidian-search-input" placeholder="Search notes by name or path..." style="width:100%; font-size:0.78rem; padding:4px 8px;" oninput="filterObsidianNotesList()">
+              </div>
+              <div id="obsidian-notes-list" style="flex:1; overflow-y:auto; display:flex; flex-direction:column; gap:4px; font-size:0.78rem;">
+                <!-- Note rows rendered dynamically -->
+                <div style="color:var(--term-text-muted); padding:8px;">Loading notes from CouchDB &amp; Vault...</div>
+              </div>
+            </div>
+
+            <!-- Right Pane: Note Reader & Editor -->
+            <div class="obsidian-reader-pane" id="obsidian-reader-pane" style="flex:1; display:flex; flex-direction:column; background:var(--term-bg); border:1px solid var(--term-border-dim); border-radius:4px; min-width:0;">
+              <!-- Note Toolbar -->
+              <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 10px; background:var(--term-surface); border-bottom:1px solid var(--term-border-dim); font-size:0.75rem; flex-wrap:wrap; gap:6px;">
+                <div style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; display:flex; align-items:center; gap:6px;">
+                  <button type="button" class="term-cmd-btn" id="obsidian-mobile-back-btn" onclick="setObsidianMobileMode('list')" style="display:none; color:var(--term-accent-gold); font-weight:bold; padding:1px 6px;">[◀ NOTES LIST]</button>
+                  <span style="color:var(--term-text-muted);">NOTE:</span>
+                  <strong id="obsidian-active-note-path" style="color:var(--term-text-bright);">(Select a note to view)</strong>
+                  <span id="obsidian-note-source-badge" class="status-badge" style="font-size:0.68rem; display:none;"></span>
+                </div>
+                <div style="display:flex; gap:6px; align-items:center;">
+                  <button type="button" class="term-cmd-btn" id="obsidian-save-note-btn" onclick="saveObsidianNote()" style="background:var(--term-accent-blue); color:#fff; font-weight:bold;">[💾 SAVE NOTE]</button>
+                  <button type="button" class="term-cmd-btn" id="obsidian-toggle-view-btn" onclick="toggleObsidianRenderMode()">[VIEW: RAW]</button>
+                </div>
+              </div>
+
+              <!-- Note Content Viewport -->
+              <div style="flex:1; display:flex; flex-direction:column; min-height:0; position:relative;">
+                <textarea id="obsidian-note-editor" class="form-input" spellcheck="false" style="flex:1; width:100%; height:100%; border:none; outline:none; font-family:'Cascadia Code', 'Fira Code', monospace; font-size:0.82rem; line-height:1.5; padding:12px; resize:none; background:#0d1117; color:#c9d1d9;" placeholder="Select a note on the left to read or edit..."></textarea>
+                <div id="obsidian-note-preview" style="display:none; flex:1; width:100%; height:100%; overflow-y:auto; padding:16px; font-size:0.88rem; line-height:1.6; background:var(--term-bg); color:var(--term-text-bright);"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- [F8: HA & CCTV] -->
+      <section class="view-pane" id="view-ha">
+        <div class="harness-container">
+          <div class="harness-card-title" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+            <span>🏠 HOME ASSISTANT OS &amp; SMART HOME COCKPIT</span>
+            <div style="display:flex; gap:6px; align-items:center;">
+              <span class="status-badge online" id="ha-connection-badge" style="font-size:0.75rem;">HAOS (ONLINE)</span>
+              <button type="button" class="term-cmd-btn" id="refresh-ha-btn" onclick="fetchHaDashboard(); fetchPresenceState(); fetchGardenState();">[🔄 REFRESH STATES]</button>
+            </div>
+          </div>
+
+          <!-- Courage Computer Real Presence & Voice Bar -->
+          <div class="harness-card" style="margin-bottom:12px; border:1px solid var(--term-accent-gold); background:rgba(217,119,6,0.04);">
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; border-bottom:1px solid var(--term-border-dim); padding-bottom:6px; margin-bottom:8px;">
+              <span style="font-weight:bold; color:var(--term-accent-gold); font-size:0.9rem;">💻 COURAGE THE COWARDLY DOG COMPUTER (NOWHERE 1999)</span>
+              <span style="font-size:0.72rem; color:var(--term-text-muted); font-family:monospace;">VOICE: bm_george @ 1.06x | REAL PRESENCE ENGINE</span>
+            </div>
+
+            <!-- Resident & Pet Real Presence Grid -->
+            <div style="margin-bottom:10px;">
+              <div style="display:flex; gap:6px; margin-bottom:6px;">
+                <button type="button" class="preset-btn active" id="presence-tab-people" onclick="showPresenceTab('people')">[👥 RESIDENTS &amp; PETS]</button>
+                <button type="button" class="preset-btn" id="presence-tab-live" onclick="showPresenceTab('live')">[📹 LIVE CAMERAS]</button>
+              </div>
+              <div id="presence-locations-grid" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:8px;">
+                <div style="color:var(--term-text-muted); font-size:0.75rem;">Loading real-time presence telemetry...</div>
+              </div>
+              <div id="presence-live-grid" style="display:none; grid-template-columns:repeat(auto-fit, minmax(300px, 1fr)); gap:8px;"></div>
+            </div>
+
+            <!-- Appliance Telemetry Row -->
+            <div style="margin-bottom:10px;">
+              <div style="font-size:0.72rem; font-weight:bold; color:var(--term-text-muted); margin-bottom:4px;">🧺 APPLIANCE MONITORS:</div>
+              <div id="presence-appliances-box"></div>
+            </div>
+
+            <!-- Courage Voice Interaction Bar -->
+            <div style="border-top:1px dashed var(--term-border-dim); padding-top:8px;">
+              <div style="display:flex; gap:6px; margin-bottom:6px;">
+                <input type="text" id="courage-query-input" class="form-input" placeholder="Ask Computer a question (e.g. Is the laundry done? Where is the cat? What is tomorrow's schedule?)..." style="flex:1; font-size:0.82rem;">
+                <button type="button" class="term-cmd-btn" id="courage-ask-btn" onclick="askCourage()" style="background:var(--term-accent-gold); color:#000; font-weight:bold; padding:4px 12px;">
+                  [🗣️ ASK COURAGE]
+                </button>
+              </div>
+
+              <!-- Fast Preset Buttons -->
+              <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;">
+                <button type="button" class="preset-btn" onclick="askCourage('is the laundry done?')">[🧺 Laundry Done?]</button>
+                <button type="button" class="preset-btn" onclick="askCourage('where is the cat?')">[🐱 Where is the cat?]</button>
+                <button type="button" class="preset-btn" onclick="askCourage('what is tomorrow\'s schedule?')">[📅 Tomorrow's Schedule]</button>
+                <button type="button" class="preset-btn" onclick="askCourage('how hot is it outside and should I turn off the AC?')">[🌡️ Weather &amp; AC Advice]</button>
+              </div>
+
+              <!-- Output Box & Audio Player -->
+              <div id="courage-response-box" style="background:var(--term-bg); border:1px solid var(--term-border-dim); border-radius:3px; padding:8px; font-family:monospace; min-height:42px; font-size:0.80rem; color:var(--term-text-muted);">
+                Awaiting your query, you loaf...
+              </div>
+              <audio id="courage-audio-player" controls style="display:none; width:100%; margin-top:6px; height:32px;"></audio>
+            </div>
+          </div>
+
+          <!-- 4-Zone Landscape & Irrigation Cockpit -->
+          <div class="harness-card" style="margin-bottom:12px; border:1px solid var(--term-accent-blue); background:rgba(2,132,199,0.03);">
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; border-bottom:1px solid var(--term-border-dim); padding-bottom:6px; margin-bottom:8px;">
+              <span style="font-weight:bold; color:var(--term-accent-blue); font-size:0.9rem;">🌻 4-ZONE LANDSCAPE &amp; SMART IRRIGATION COCKPIT</span>
+              <div style="display:flex; gap:6px; align-items:center;">
+                <span id="garden-battery-badge" class="status-badge" style="font-size:0.72rem;">🔋 Battery: --%</span>
+                <button type="button" class="preset-btn" id="garden-rain-delay-btn" onclick="toggleRainDelay()">[☀️ RAIN DELAY: OFF]</button>
+                <button type="button" class="term-cmd-btn" onclick="emergencyCloseAll()" style="color:var(--term-accent-red); font-weight:bold;">[🛑 EMERGENCY SHUTOFF ALL]</button>
+              </div>
+            </div>
+
+            <!-- 4 Zones Grid -->
+            <div id="garden-zones-grid" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:10px;">
+              <div style="color:var(--term-text-muted); font-size:0.75rem;">Loading irrigation valves...</div>
+            </div>
+          </div>
+
+          <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(340px, 1fr)); gap:12px; margin-bottom:12px;">
+            <!-- Nest Thermostat ASCII Dial Box -->
+            <div class="harness-card" style="margin-bottom:0;">
+              <div style="font-weight:bold; color:var(--term-text-bright); display:flex; justify-content:space-between; align-items:center;">
+                <span>🌡️ GOOGLE NEST THERMOSTAT</span>
+                <span id="thermostat-entity-id" style="font-size:0.72rem; color:var(--term-text-muted); font-family:monospace;">climate.nest_thermostat</span>
+              </div>
+
+              <div class="ascii-thermostat-dial" style="font-family:monospace; background:var(--term-bg); padding:10px; border-radius:4px; margin:8px 0; font-size:0.82rem; line-height:1.4; border:1px solid var(--term-border-dim);">
+.---------------------------------------.<br>
+|&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;HVAC CLIMATE&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;|<br>
+|&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;|<br>
+|&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;CURRENT&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;TARGET&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;|<br>
+|&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="thermostat-temp-big" id="thermostat-current-temp" style="font-size:1.3rem; font-weight:bold; color:var(--term-accent-gold);">72</span>°F&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="thermostat-temp-big" id="thermostat-target-temp" style="font-size:1.3rem; font-weight:bold; color:var(--term-accent-blue);">71</span>°F&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;|<br>
+|&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;|<br>
+|&nbsp;&nbsp;&nbsp;STATE: <span id="thermostat-hvac-state" style="font-weight:bold; color:var(--term-text-bright);">[COOL ACTIVE]</span>&nbsp;&nbsp;&nbsp;HUMID: <span id="thermostat-humidity">45%</span>&nbsp;&nbsp;&nbsp;|<br>
+'---------------------------------------'
+              </div>
+
+              <!-- Temperature Controls -->
+              <div style="display:flex; align-items:center; justify-content:center; gap:10px; margin:8px 0;">
+                <button type="button" class="term-cmd-btn" id="temp-down-btn" style="font-size:1.1rem; padding:2px 14px; font-weight:bold;">[ - ]</button>
+                <input type="range" id="temp-slider" min="60" max="85" value="71" style="width:140px; accent-color:var(--term-accent-blue);">
+                <button type="button" class="term-cmd-btn" id="temp-up-btn" style="font-size:1.1rem; padding:2px 14px; font-weight:bold;">[ + ]</button>
+              </div>
+
+              <!-- HVAC Modes -->
+              <div class="thermostat-modes-row" style="display:flex; gap:6px; justify-content:center; margin:8px 0;">
+                <button type="button" class="preset-btn" data-hvac-mode="heat">[HEAT]</button>
+                <button type="button" class="preset-btn active" data-hvac-mode="cool">[COOL]</button>
+                <button type="button" class="preset-btn" data-hvac-mode="eco">[ECO]</button>
+                <button type="button" class="preset-btn" data-hvac-mode="off">[OFF]</button>
+              </div>
+
+              <!-- home-agent automation dispatch -->
+              <div style="border-top:1px dashed var(--term-border-dim); padding-top:8px; margin-top:8px;">
+                <div style="font-size:0.74rem; color:var(--term-text-muted); margin-bottom:4px;">✨ home-agent (Domestic Concierge & Sentry) Automation Dispatch:</div>
+                <div style="display:flex; gap:6px;">
+                  <input type="text" class="form-input" id="ha-nlp-input" placeholder="e.g. set thermostat to 72, turn off living room lights..." style="flex:1; font-size:0.78rem;">
+                  <button type="button" class="term-cmd-btn" id="ha-nlp-send-btn" style="background:var(--term-accent-blue); color:#fff; font-weight:bold;">[DISPATCH]</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Tapo CCTV & Perimeter Vigilance Status -->
+            <div class="harness-card" style="margin-bottom:0; display:flex; flex-direction:column;">
+              <div style="font-weight:bold; color:var(--term-text-bright); display:flex; justify-content:space-between; align-items:center;">
+                <span>🌲 WILDLIFE &amp; PERIMETER VIGILANCE</span>
+                <span id="hm-vigilance-time" style="font-size:0.72rem; color:var(--term-text-muted);">Last Check: --</span>
+              </div>
+
+              <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px; margin:8px 0;">
+                <div style="background:var(--term-bg); padding:6px; border:1px solid var(--term-border-dim); border-radius:3px; text-align:center;">
+                  <div style="font-size:0.68rem; color:var(--term-text-muted);">CLIMATE</div>
+                  <div id="hm-stat-climate" style="font-size:0.85rem; font-weight:bold; color:var(--term-text-bright);">72°F Cool</div>
+                </div>
+                <div style="background:var(--term-bg); padding:6px; border:1px solid var(--term-border-dim); border-radius:3px; text-align:center;">
+                  <div style="font-size:0.68rem; color:var(--term-text-muted);">PERIMETER</div>
+                  <div id="hm-stat-perimeter" style="font-size:0.85rem; font-weight:bold; color:#008800;">Secure</div>
+                </div>
+                <div style="background:var(--term-bg); padding:6px; border:1px solid var(--term-border-dim); border-radius:3px; text-align:center;">
+                  <div style="font-size:0.68rem; color:var(--term-text-muted);">SENTINEL</div>
+                  <div id="hm-stat-verdict" style="font-size:0.85rem; font-weight:bold; color:#008800;">Nominal</div>
+                </div>
+              </div>
+
+              <div style="flex:1; display:flex; flex-direction:column;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                  <span style="font-size:0.72rem; font-weight:bold; color:var(--term-text-muted);">CAMERA SENTRY LOG:</span>
+                  <span id="ha-ai-integrations-count" style="font-size:0.70rem; color:var(--term-accent-gold);">Ready</span>
+                </div>
+                <div id="hivemind-vision-log-box" style="flex:1; min-height:120px; max-height:160px; background:var(--term-bg); border:1px solid var(--term-border-dim); border-radius:3px; padding:6px; font-family:monospace; font-size:0.72rem; overflow-y:auto; color:var(--term-text-muted);">
+                  Waiting for vigilance telemetry...
+                </div>
+                <div id="ha-ai-integrations-list" style="margin-top:6px; font-size:0.72rem;"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Smart Home Entities & Switches Table -->
+          <div class="harness-card">
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:8px;">
+              <span style="font-weight:bold; color:var(--term-text-bright);">⚡ SMART HOME ENTITIES, LIGHTS &amp; SWITCHES</span>
+              <span id="ha-devices-count" style="font-size:0.74rem; color:var(--term-text-muted);">0 entities loaded</span>
+            </div>
+
+            <!-- Filters & Search -->
+            <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center; padding:6px; background:var(--term-bg); border:1px solid var(--term-border-dim); border-radius:4px; margin-bottom:8px;">
+              <button type="button" class="preset-btn active" id="ha-filter-curated" onclick="filterHaDevices('curated')">[⭐ CURATED]</button>
+              <button type="button" class="preset-btn" id="ha-filter-lights" onclick="filterHaDevices('lights')">[💡 LIGHTS]</button>
+              <button type="button" class="preset-btn" id="ha-filter-switches" onclick="filterHaDevices('switches')">[🔌 PLUGS &amp; SWITCHES]</button>
+              <button type="button" class="preset-btn" id="ha-filter-cameras" onclick="filterHaDevices('cameras')">[📹 CAMERAS &amp; SECURITY]</button>
+              <button type="button" class="preset-btn" id="ha-filter-all" onclick="filterHaDevices('all')">[ALL ENTITIES]</button>
+              <input type="text" id="ha-search-input" class="form-input" placeholder="Search devices (e.g. living room, dryer, floodlight)..." style="flex:1; min-width:160px; height:26px; font-size:0.75rem;" oninput="onHaSearchInput()">
+            </div>
+
+            <div style="overflow-y:auto; max-height:480px; border:1px solid var(--term-border-dim); border-radius:3px; padding:6px; background:var(--term-bg);" id="ha-entities-table">
+              <div style="color:var(--term-text-muted); padding:1rem; text-align:center;">Loading Home Assistant entities...</div>
+            </div>
+          </div>
+
+        </div>
+      </section>
+    </main>
+
+    <!-- Modal: mkdir Project -->
+    <div id="modal-mkdir" class="modal-backdrop" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.7); z-index:9999; align-items:center; justify-content:center;">
+      <div class="modal-box" style="width:440px; max-width:90vw; background:var(--term-surface); border:1px solid var(--term-accent-blue); padding:16px; border-radius:4px; box-shadow:0 8px 32px rgba(0,0,0,0.8);">
+        <div style="font-weight:bold; color:var(--term-text-bright); margin-bottom:12px; border-bottom:1px solid var(--term-border-dim); padding-bottom:6px;">
+          📁 CREATE NEW PROJECT DIRECTORY (mkdir)
+        </div>
+        <div style="margin-bottom:10px;">
+          <label style="display:block; font-size:0.75rem; color:var(--term-text-muted); margin-bottom:4px;">Parent Workspace Root:</label>
+          <select id="mkdir-parent-select" class="topbar-select" style="width:100%;"></select>
+        </div>
+        <div style="margin-bottom:12px;">
+          <label style="display:block; font-size:0.75rem; color:var(--term-text-muted); margin-bottom:4px;">Project / Folder Name:</label>
+          <input type="text" id="mkdir-name-input" class="topbar-select" style="width:100%; padding:6px;" placeholder="e.g. nest-automation or kernel-profiler">
+        </div>
+        <div style="margin-bottom:14px;">
+          <label style="display:block; font-size:0.75rem; color:var(--term-text-muted); margin-bottom:4px;">Agent Autonomy Level:</label>
+          <select id="mkdir-autonomy-select" class="topbar-select" style="width:100%;">
+            <option value="tiered" selected>🛡️ Tiered Approval (Recommended)</option>
+            <option value="read_only">🔒 Read-Only (Audit / Review)</option>
+            <option value="autonomous">⚡ Autonomous Master (Unrestricted in folder)</option>
+          </select>
+        </div>
+
+        <div style="margin-bottom:8px; display:flex; align-items:center; gap:8px;">
+          <input type="checkbox" id="mkdir-init-agent-check" checked style="accent-color:var(--term-accent-gold); cursor:pointer;">
+          <label for="mkdir-init-agent-check" style="font-size:0.78rem; color:var(--term-accent-gold); font-weight:bold; cursor:pointer;">🤖 Bind Dedicated Project Agent (Agent DNA)</label>
+        </div>
+
+        <div id="mkdir-agent-fields" style="margin-bottom:14px; padding:8px; background:var(--term-bg); border:1px solid var(--term-border-dim); border-radius:3px;">
+          <div style="margin-bottom:8px;">
+            <label style="display:block; font-size:0.72rem; color:var(--term-text-muted); margin-bottom:2px;">Agent Name:</label>
+            <input type="text" id="mkdir-agent-name" class="topbar-select" style="width:100%; padding:4px;" placeholder="e.g. Hephaestus or Nest Sentinel">
+          </div>
+          <div>
+            <label style="display:block; font-size:0.72rem; color:var(--term-text-muted); margin-bottom:2px;">Specialty / Technical Focus:</label>
+            <input type="text" id="mkdir-agent-role" class="topbar-select" style="width:100%; padding:4px;" placeholder="e.g. Vulkan Shader Architect or Automation Specialist">
+          </div>
+        </div>
+
+        <div style="display:flex; justify-content:flex-end; gap:8px;">
+          <button type="button" class="term-cmd-btn" id="mkdir-cancel-btn">[CANCEL]</button>
+          <button type="button" class="term-cmd-btn" id="mkdir-submit-btn" style="background:var(--term-accent-blue); color:#fff;">[CREATE &amp; LINK]</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal: Add Custom Workspace Root -->
+    <div id="modal-add-root" class="modal-backdrop" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.7); z-index:9999; align-items:center; justify-content:center;">
+      <div class="modal-box" style="width:440px; max-width:90vw; background:var(--term-surface); border:1px solid var(--term-accent-blue); padding:16px; border-radius:4px; box-shadow:0 8px 32px rgba(0,0,0,0.8);">
+        <div style="font-weight:bold; color:var(--term-text-bright); margin-bottom:12px; border-bottom:1px solid var(--term-border-dim); padding-bottom:6px;">
+          🌐 ADD CUSTOM WORKSPACE ROOT PATH
+        </div>
+        <div style="margin-bottom:10px;">
+          <label style="display:block; font-size:0.75rem; color:var(--term-text-muted); margin-bottom:4px;">Friendly Label:</label>
+          <input type="text" id="add-root-label-input" class="topbar-select" style="width:100%; padding:6px;" placeholder="e.g. NVMe Projects or NAS Archive">
+        </div>
+        <div style="margin-bottom:12px;">
+          <label style="display:block; font-size:0.75rem; color:var(--term-text-muted); margin-bottom:4px;">Absolute Directory Path:</label>
+          <input type="text" id="add-root-path-input" class="topbar-select" style="width:100%; padding:6px;" placeholder="e.g. /opt/docker or D:/Projects">
+        </div>
+        <div style="margin-bottom:14px;">
+          <label style="display:block; font-size:0.75rem; color:var(--term-text-muted); margin-bottom:4px;">Target Node:</label>
+          <select id="add-root-node-select" class="topbar-select" style="width:100%;">
+            <option value="local">This machine</option>
+          </select>
+        </div>
+        <div style="display:flex; justify-content:flex-end; gap:8px;">
+          <button type="button" class="term-cmd-btn" id="add-root-cancel-btn">[CANCEL]</button>
+          <button type="button" class="term-cmd-btn" id="add-root-submit-btn" style="background:var(--term-accent-blue); color:#fff;">[SAVE ROOT]</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal: View & Edit In-Repository Agent DNA -->
+    <div id="modal-agent-dna" class="modal-backdrop" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.7); z-index:9999; align-items:center; justify-content:center;">
+      <div class="modal-box" style="width:680px; max-width:95vw; max-height:90vh; background:var(--term-surface); border:1px solid var(--term-accent-gold); padding:16px; border-radius:4px; box-shadow:0 8px 32px rgba(0,0,0,0.8); display:flex; flex-direction:column;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; border-bottom:1px solid var(--term-border-dim); padding-bottom:6px;">
+          <div style="font-weight:bold; color:var(--term-accent-gold); font-size:0.9rem;" id="agent-dna-modal-title">
+            🤖 IN-REPOSITORY AGENT DNA &amp; SOUL
+          </div>
+          <span id="agent-dna-badge-id" style="font-size:0.72rem; color:var(--term-text-muted);"></span>
+        </div>
+
+        <!-- DNA Section Tabs -->
+        <div style="display:flex; gap:6px; margin-bottom:10px; border-bottom:1px solid var(--term-border-dim); padding-bottom:6px; flex-wrap:wrap;">
+          <button type="button" class="term-cmd-btn" id="tab-dna-invariants" style="border-color:var(--term-accent-gold);">[📌 INVARIANTS.md]</button>
+          <button type="button" class="term-cmd-btn" id="tab-dna-identity">[👤 IDENTITY.md]</button>
+          <button type="button" class="term-cmd-btn" id="tab-dna-soul">[🧠 SOUL.md]</button>
+          <button type="button" class="term-cmd-btn" id="tab-dna-handover">[📋 HANDOVER.md]</button>
+        </div>
+
+        <div style="flex:1; min-height:260px; display:flex; flex-direction:column; margin-bottom:12px;">
+          <label id="agent-dna-tab-desc" style="font-size:0.72rem; color:var(--term-text-muted); margin-bottom:4px;">
+            Living architectural invariants and rules enforced across model generations:
+          </label>
+          <textarea id="agent-dna-textarea" class="workstation-editor" style="flex:1; width:100%; min-height:220px; font-family:var(--font-mono); font-size:0.82rem; padding:8px; resize:vertical; background:var(--term-bg); color:var(--term-text);" spellcheck="false"></textarea>
+        </div>
+
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <span id="agent-dna-save-status" style="font-size:0.75rem; color:var(--term-accent-gold);"></span>
+          <div style="display:flex; gap:8px;">
+            <button type="button" class="term-cmd-btn" id="agent-dna-cancel-btn">[CLOSE]</button>
+            <button type="button" class="term-cmd-btn" id="agent-dna-save-btn" style="background:var(--term-accent-gold); color:#000; font-weight:bold;">[SAVE AGENT DNA]</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal: Mobile Model Routing & Hardware Stack Profile Popover -->
+    <div id="modal-model-picker" class="mobile-popover-backdrop" onclick="if(event.target===this)closeModelModal()">
+      <div class="mobile-popover-box" style="max-height:85vh; overflow-y:auto;">
+        <div class="mobile-popover-header">
+          <span>🤖 ACTIVE MODEL &amp; CLUSTER STACK</span>
+          <button type="button" class="term-cmd-btn" onclick="closeModelModal()">✕</button>
+        </div>
+        <div style="font-size:0.72rem; color:var(--term-text-muted); padding:4px 0 6px 0; font-weight:bold; border-bottom:1px solid var(--term-border-dim);">
+          INFERENCE ENDPOINT ROUTING (SESSION):
+        </div>
+        <div class="mobile-popover-list" id="model-popover-list">
+          <!-- Models rendered dynamically from cluster health -->
+        </div>
+
+        <div style="margin-top:12px; padding-top:10px; border-top:1px solid var(--term-border-dim);">
+          <div style="font-size:0.74rem; color:var(--term-accent-gold); font-weight:bold; margin-bottom:6px; display:flex; justify-content:space-between; align-items:center;">
+            <span>⚡ HARDWARE STACK PROFILES (VM 102 DUAL-GPU):</span>
+            <span id="stack-switch-status" style="font-size:0.7rem; color:var(--term-accent-blue);"></span>
+          </div>
+          <div id="cluster-modes-list" style="display:flex; flex-direction:column; gap:6px;">
+            <!-- Hardware profiles rendered dynamically -->
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal: Add External Compute Node / Model Host -->
+    <div id="modal-add-node" class="modal-backdrop" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.75); z-index:9999; align-items:center; justify-content:center;">
+      <div class="modal-box" style="width:460px; max-width:92vw; background:var(--term-surface); border:1px solid var(--term-accent-blue); padding:16px; border-radius:4px; box-shadow:0 8px 32px rgba(0,0,0,0.8);">
+        <div style="font-weight:bold; color:var(--term-text-bright); margin-bottom:12px; border-bottom:1px solid var(--term-border-dim); padding-bottom:6px; display:flex; justify-content:space-between; align-items:center;">
+          <span>🖥️ REGISTER COMPUTE NODE / MODEL HOST</span>
+          <button type="button" class="term-cmd-btn" onclick="closeAddNodeModal()">✕</button>
+        </div>
+        <div style="font-size:0.76rem; color:var(--term-text-muted); margin-bottom:12px; line-height:1.4;">
+          Add secondary workstations, laptops, or Ollama/vLLM endpoints to distribute inference across your continuum.
+        </div>
+        <div style="margin-bottom:10px;">
+          <label style="display:block; font-size:0.75rem; color:var(--term-text-muted); margin-bottom:4px;">Node Name / Label:</label>
+          <input type="text" id="add-node-name" class="topbar-select" style="width:100%; padding:6px;" placeholder="e.g. MacBook Pro M3 or Secondary PC (Ollama)">
+        </div>
+        <div style="margin-bottom:10px;">
+          <label style="display:block; font-size:0.75rem; color:var(--term-text-muted); margin-bottom:4px;">Endpoint Base URL (HTTP / Tailscale):</label>
+          <input type="text" id="add-node-url" class="topbar-select" style="width:100%; padding:6px;" placeholder="e.g. http://10.0.0.20:11434 or http://laptop.tailscale:8080">
+        </div>
+        <div style="margin-bottom:14px;">
+          <label style="display:block; font-size:0.75rem; color:var(--term-text-muted); margin-bottom:4px;">Node Description &amp; Hardware Tags:</label>
+          <input type="text" id="add-node-desc" class="topbar-select" style="width:100%; padding:6px;" placeholder="e.g. Local Ollama Server (RTX 4090 24GB)">
+        </div>
+        <div id="add-node-status" style="font-size:0.76rem; margin-bottom:10px; display:none;"></div>
+        <div style="display:flex; justify-content:flex-end; gap:8px;">
+          <button type="button" class="term-cmd-btn" onclick="closeAddNodeModal()">[CANCEL]</button>
+          <button type="button" class="term-cmd-btn" id="btn-submit-add-node" onclick="submitAddNode()" style="background:var(--term-accent-blue); color:#fff; font-weight:bold;">
+            [+ TEST &amp; REGISTER NODE]
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal: Agent Directory & Cognitive Personas -->
+    <div id="modal-agent-directory" class="modal-backdrop" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.75); z-index:9999; align-items:center; justify-content:center;">
+      <div class="modal-box" style="width:640px; max-width:94vw; max-height:88vh; overflow:hidden; display:flex; flex-direction:column; background:var(--term-surface); border:1px solid var(--term-accent-gold); padding:16px; border-radius:4px; box-shadow:0 8px 32px rgba(0,0,0,0.85);">
+        <div style="font-weight:bold; color:var(--term-accent-gold); margin-bottom:10px; border-bottom:1px solid var(--term-border-dim); padding-bottom:6px; display:flex; justify-content:space-between; align-items:center;">
+          <span>🤖 AGENT DIRECTORY &amp; COGNITIVE PERSONAS</span>
+          <button type="button" class="term-cmd-btn" onclick="closeAgentDirectoryModal()">✕</button>
+        </div>
+
+        <!-- Active Agent Banner -->
+        <div id="agent-active-banner" style="padding:8px 12px; background:var(--term-bg); border:1px solid var(--term-border-dim); border-radius:3px; margin-bottom:12px; display:flex; justify-content:space-between; align-items:center;">
+          <div>
+            <div style="font-size:0.72rem; color:var(--term-text-muted);">ACTIVE COPILOT PERSONA:</div>
+            <div id="agent-active-name" style="font-weight:bold; font-size:0.88rem; color:var(--term-text-bright);">Default Homelab Copilot</div>
+          </div>
+          <button type="button" class="term-cmd-btn" id="btn-deactivate-agent" onclick="clearActiveAgent()" style="font-size:0.75rem;">[USE DEFAULT]</button>
+        </div>
+
+        <!-- Scrollable Body -->
+        <div style="flex:1; overflow-y:auto; min-height:0; display:flex; flex-direction:column; gap:12px; padding-right:4px;">
+          
+          <!-- Workspace Project Agent -->
+          <div id="workspace-agent-section" style="display:none;">
+            <div style="font-weight:bold; font-size:0.76rem; color:var(--term-accent-blue); margin-bottom:6px;">📁 CURRENT WORKSPACE AGENT</div>
+            <div id="workspace-agent-card"></div>
+          </div>
+
+          <!-- Builtin Homelab Specialists -->
+          <div>
+            <div style="font-weight:bold; font-size:0.76rem; color:var(--term-accent-gold); margin-bottom:6px;">⚡ SPECIALIST CLUSTER PERSONAS</div>
+            <div id="builtin-agents-grid" style="display:grid; grid-template-columns:1fr; gap:8px;"></div>
+          </div>
+
+          <!-- Custom User Agents -->
+          <div>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+              <span style="font-weight:bold; font-size:0.76rem; color:var(--term-text-bright);">🧬 CUSTOM USER AGENTS</span>
+              <button type="button" class="term-cmd-btn" onclick="toggleCreateAgentForm()" style="font-size:0.72rem;">[+ CREATE CUSTOM AGENT]</button>
+            </div>
+            
+            <!-- Create Form (Hidden by default) -->
+            <div id="create-agent-form" style="display:none; background:var(--term-bg); border:1px dashed var(--term-accent-gold); padding:10px; border-radius:3px; margin-bottom:8px;">
+              <div style="font-weight:bold; font-size:0.78rem; color:var(--term-accent-gold); margin-bottom:8px;">Define New Autonomous Agent</div>
+              <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:8px;">
+                <div>
+                  <label style="display:block; font-size:0.72rem; color:var(--term-text-muted); margin-bottom:2px;">Agent Name:</label>
+                  <input type="text" id="new-agent-name" class="topbar-select" style="width:100%; padding:4px;" placeholder="e.g. SRE Copilot">
+                </div>
+                <div>
+                  <label style="display:block; font-size:0.72rem; color:var(--term-text-muted); margin-bottom:2px;">Role / Title:</label>
+                  <input type="text" id="new-agent-role" class="topbar-select" style="width:100%; padding:4px;" placeholder="e.g. Infrastructure SRE">
+                </div>
+              </div>
+              <div style="margin-bottom:8px;">
+                <label style="display:block; font-size:0.72rem; color:var(--term-text-muted); margin-bottom:2px;">System Prompt Directives &amp; Invariants:</label>
+                <textarea id="new-agent-prompt" class="topbar-select" rows="3" style="width:100%; padding:4px; font-family:monospace; resize:vertical;" placeholder="You are SRE Copilot, specialized in Linux reliability, systemd diagnostics..."></textarea>
+              </div>
+              <div style="display:flex; justify-content:flex-end; gap:6px;">
+                <button type="button" class="term-cmd-btn" onclick="toggleCreateAgentForm()">[CANCEL]</button>
+                <button type="button" class="term-cmd-btn" onclick="submitCreateAgent()" style="background:var(--term-accent-gold); color:#000; font-weight:bold;">[SAVE AGENT]</button>
+              </div>
+            </div>
+
+            <!-- Edit Agent Form (Hidden by default) -->
+            <div id="edit-agent-form" style="display:none; background:var(--term-bg); border:1px solid var(--term-accent-gold); padding:10px; border-radius:3px; margin-bottom:8px;">
+              <div style="font-weight:bold; font-size:0.78rem; color:var(--term-accent-gold); margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
+                <span>✏️ Edit Agent Persona &amp; Directives</span>
+                <span id="edit-agent-id-badge" style="font-size:0.7rem; color:var(--term-text-muted); font-family:monospace;"></span>
+              </div>
+              <input type="hidden" id="edit-agent-id">
+              <div style="display:grid; grid-template-columns:1fr 1fr 60px; gap:8px; margin-bottom:8px;">
+                <div>
+                  <label style="display:block; font-size:0.72rem; color:var(--term-text-muted); margin-bottom:2px;">Agent Name:</label>
+                  <input type="text" id="edit-agent-name" class="topbar-select" style="width:100%; padding:4px;">
+                </div>
+                <div>
+                  <label style="display:block; font-size:0.72rem; color:var(--term-text-muted); margin-bottom:2px;">Role / Title:</label>
+                  <input type="text" id="edit-agent-role" class="topbar-select" style="width:100%; padding:4px;">
+                </div>
+                <div>
+                  <label style="display:block; font-size:0.72rem; color:var(--term-text-muted); margin-bottom:2px;">Icon:</label>
+                  <input type="text" id="edit-agent-icon" class="topbar-select" style="width:100%; padding:4px; text-align:center;">
+                </div>
+              </div>
+              <div style="margin-bottom:8px;">
+                <label style="display:block; font-size:0.72rem; color:var(--term-text-muted); margin-bottom:2px;">Preferred Model:</label>
+                <select id="edit-agent-model" class="topbar-select" style="width:100%;">
+                  <option value="coordinator" data-profile-tpl="{engines.coordinator.label} :{engines.coordinator.port}">Coordinator</option>
+                  <option value="worker" data-profile-tpl="{engines.worker.label} :{engines.worker.port}">Worker</option>
+                </select>
+              </div>
+              <div style="margin-bottom:8px;">
+                <label style="display:block; font-size:0.72rem; color:var(--term-text-muted); margin-bottom:2px;">System Prompt Directives &amp; Invariants:</label>
+                <textarea id="edit-agent-prompt" class="topbar-select" rows="6" style="width:100%; padding:6px; font-family:monospace; font-size:0.78rem; line-height:1.45; resize:vertical;"></textarea>
+              </div>
+              <div style="display:flex; justify-content:flex-end; gap:6px;">
+                <button type="button" class="term-cmd-btn" onclick="closeEditAgentForm()">[CANCEL]</button>
+                <button type="button" class="term-cmd-btn" onclick="submitUpdateAgent()" style="background:var(--term-accent-gold); color:#000; font-weight:bold;">[SAVE CHANGES]</button>
+              </div>
+            </div>
+
+            <div id="custom-agents-grid" style="display:grid; grid-template-columns:1fr; gap:8px;"></div>
+          </div>
+        </div>
+
+        <div style="border-top:1px solid var(--term-border-dim); padding-top:8px; margin-top:10px; display:flex; justify-content:flex-end;">
+          <button type="button" class="term-cmd-btn" onclick="closeAgentDirectoryModal()">[CLOSE]</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal: Cluster Telemetry Popover -->
+    <div id="modal-cluster-health" class="mobile-popover-backdrop" onclick="if(event.target===this)closeClusterModal()">
+      <div class="mobile-popover-box">
+        <div class="mobile-popover-header">
+          <span>⚡ CLUSTER TELEMETRY &amp; HARDWARE HEALTH</span>
+          <button type="button" class="term-cmd-btn" onclick="closeClusterModal()">✕</button>
+        </div>
+        <div style="font-size:0.75rem; color:var(--term-text-muted); margin-bottom:4px;">SERVICE HEALTH (LIVE, /api/health/all)</div>
+        <div id="service-health-list" style="font-size:0.78rem; font-family:monospace; display:flex; flex-direction:column; gap:3px; margin-bottom:10px;">
+          <div style="color:var(--term-text-muted);">Probing services...</div>
+        </div>
+        <div id="cluster-health-popover-body" style="font-size:0.8rem; display:flex; flex-direction:column; gap:8px;">
+          <!-- Telemetry rendered dynamically -->
+        </div>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px;">
+          <button type="button" class="term-cmd-btn" onclick="loadFleetInstances(true)">[🔄 REFRESH PINGS]</button>
+          <button type="button" class="term-cmd-btn" onclick="closeClusterModal()">[CLOSE]</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal: Mobile Settings & Continuum Drawer -->
+    <div id="modal-settings-drawer" class="mobile-popover-backdrop" onclick="if(event.target===this)closeSettingsDrawer()">
+      <div class="mobile-popover-box">
+        <div class="mobile-popover-header">
+          <span>⚙️ WORKSTATION SETTINGS &amp; CONTINUUM</span>
+          <button type="button" class="term-cmd-btn" onclick="closeSettingsDrawer()">✕</button>
+        </div>
+        
+        <div style="display:flex; flex-direction:column; gap:12px; font-size:0.82rem;">
+          <div>
+            <label style="display:block; color:var(--term-text-muted); font-size:0.75rem; margin-bottom:4px;">ACTIVE NODE CONTINUUM:</label>
+            <select class="topbar-select" id="drawer-node-select" style="width:100%;"></select>
+          </div>
+
+          <div>
+            <label style="display:block; color:var(--term-text-muted); font-size:0.75rem; margin-bottom:4px;">ACCESSIBLE COLOR PALETTE:</label>
+            <select class="topbar-select" id="drawer-theme-select" style="width:100%;">
+              <option value="deu">DEU (Deuteranopia - Standard)</option>
+              <option value="trit">TRIT (Tritanopia)</option>
+              <option value="win98">WIN98 (Windows 98 Retro)</option>
+              <option value="crt-green">CRT-G (Phosphor Green)</option>
+              <option value="crt-amber">CRT-A (Phosphor Amber)</option>
+            </select>
+          </div>
+
+          <div>
+            <label style="display:block; color:var(--term-text-muted); font-size:0.75rem; margin-bottom:4px;">AGENT AUTONOMY BOUNDARY:</label>
+            <select class="topbar-select" id="drawer-autonomy-select" style="width:100%;">
+              <option value="tiered">🛡️ Tiered (Supervised)</option>
+              <option value="read_only">🔒 Read-Only (Audit)</option>
+              <option value="autonomous">⚡ Autonomous Master</option>
+            </select>
+          </div>
+
+          <div style="display:flex; gap:8px; margin-top:8px;">
+            <button type="button" class="btn-nudge-global" onclick="closeSettingsDrawer(); triggerGlobalNudge();" style="flex:1; justify-content:center;">
+              ⚡ NUDGE DIRECTIVE
+            </button>
+            <button type="button" class="term-cmd-btn" onclick="closeSettingsDrawer(); clearHistory();" style="flex:1;">
+              🗑️ CLEAR CHAT
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Memory Card Inspect / Edit / Add Modal -->
+    <div id="modal-amem-card" class="term-modal" style="display:none;">
+      <div class="term-modal-content" style="max-width:560px;">
+        <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+          <span style="font-weight:bold; color:var(--term-accent-gold);" id="amem-modal-title">🧠 INSPECT / EDIT ATOMIC CARD</span>
+          <button type="button" class="term-cmd-btn" onclick="closeAmemModal()">[✕]</button>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:10px;">
+          <div class="form-group">
+            <label>Card Identifier (ID):</label>
+            <input type="text" class="form-input" id="modal-amem-id" placeholder="e.g. arch.vulkan.device_names">
+          </div>
+          <div class="form-group">
+            <label>Category:</label>
+            <select class="form-select" id="modal-amem-category">
+              <option value="agent_contract">agent_contract</option>
+              <option value="systems_architecture">systems_architecture</option>
+              <option value="hardware">hardware</option>
+              <option value="home_automation">home_automation</option>
+              <option value="curated_algorithmic_&_recursive_reasoning">curated_algorithmic_&_recursive_reasoning</option>
+              <option value="curated_autonomous_creative_&_architectural_invention">curated_autonomous_creative_&_architectural_invention</option>
+              <option value="trigger_avoidance">trigger_avoidance</option>
+              <option value="general">general</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Atomic Fact Content (&lt; 35 tokens):</label>
+            <textarea class="form-input" id="modal-amem-atom" rows="3" placeholder="Exact atomic invariant or verified ground truth..." oninput="updateAmemModalTokenCount()"></textarea>
+            <div style="font-size:0.72rem; color:var(--term-text-muted); margin-top:2px;">
+              Tokens: <strong id="modal-amem-tok-count">0</strong> / 35 maximum recommended
+            </div>
+          </div>
+          <div class="form-group">
+            <label>Keywords / Tags (comma separated):</label>
+            <input type="text" class="form-input" id="modal-amem-keywords" placeholder="vulkan, device, gpu, invariant">
+          </div>
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px;">
+            <button type="button" class="term-cmd-btn" id="modal-amem-delete-btn" onclick="deleteActiveAmemCard()" style="color:var(--term-accent-red); font-weight:bold;">
+              [🗑️ DELETE FROM VALKEY]
+            </button>
+            <div style="display:flex; gap:6px;">
+              <button type="button" class="term-cmd-btn" onclick="closeAmemModal()">[CANCEL]</button>
+              <button type="button" class="term-cmd-btn" onclick="saveActiveAmemCard()" style="background:var(--term-accent-blue); color:#fff; font-weight:bold;">
+                [💾 SAVE TO RAM]
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Quick Capture to Obsidian Modal -->
+    <div id="modal-quick-capture" class="term-modal" style="display:none;">
+      <div class="term-modal-content" style="max-width:620px;">
+        <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+          <span style="font-weight:bold; color:var(--term-accent-green, #22c55e); font-size:0.95rem;">📥 QUICK CAPTURE TO OBSIDIAN BRAIN</span>
+          <button type="button" class="term-cmd-btn" onclick="closeQuickCaptureModal()">[✕]</button>
+        </div>
+
+        <!-- Target Vault Selection -->
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; padding:6px 10px; background:var(--term-surface); border:1px solid var(--term-border-dim); border-radius:4px;">
+          <span style="font-size:0.78rem; color:var(--term-text-muted);">TARGET VAULT:</span>
+          <select class="topbar-select" id="capture-database-select" style="font-size:0.78rem; padding:2px 8px;">
+            <option value="ai_obsidian" selected>🧠 ai_obsidian (AI Stack Brain)</option>
+            <option value="obsidiannotes">👤 obsidiannotes (personal vault)</option>
+          </select>
+        </div>
+
+        <!-- Mode Tabs -->
+        <div style="display:flex; gap:6px; margin-bottom:12px; border-bottom:1px solid var(--term-border-dim); padding-bottom:6px;">
+          <button type="button" class="term-cmd-btn active" id="tab-btn-capture-url" onclick="switchCaptureTab('url')">🌐 [URL / WEB CLIP]</button>
+          <button type="button" class="term-cmd-btn" id="tab-btn-capture-note" onclick="switchCaptureTab('note')">📝 [NOTE / SNIPPET]</button>
+          <button type="button" class="term-cmd-btn" id="tab-btn-capture-photo" onclick="switchCaptureTab('photo')">📷 [PHOTO / VISION]</button>
+        </div>
+
+        <!-- URL Tab Content -->
+        <div id="capture-tab-content-url" style="display:flex; flex-direction:column; gap:10px;">
+          <div class="form-group">
+            <label style="font-size:0.75rem; color:var(--term-text-muted);">Webpage URL (Scrapes text, generates executive summary with Worker :8002, indexes to Qdrant):</label>
+            <input type="url" class="form-input" id="capture-url-input" placeholder="https://example.com/article" style="width:100%; font-size:0.82rem; padding:6px 8px;">
+          </div>
+          <div class="form-group">
+            <label style="font-size:0.75rem; color:var(--term-text-muted);">Title or Custom Context (Optional):</label>
+            <input type="text" class="form-input" id="capture-url-title" placeholder="Optional title or note on why this matters..." style="width:100%; font-size:0.82rem; padding:6px 8px;">
+          </div>
+          <div class="form-group">
+            <label style="font-size:0.75rem; color:var(--term-text-muted);">Tags (comma separated):</label>
+            <input type="text" class="form-input" id="capture-url-tags" placeholder="research, ai, hardware" style="width:100%; font-size:0.82rem; padding:6px 8px;">
+          </div>
+          <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:8px;">
+            <button type="button" class="term-cmd-btn" onclick="closeQuickCaptureModal()">[CANCEL]</button>
+            <button type="button" class="term-cmd-btn" id="capture-url-submit-btn" onclick="submitQuickCapture('url')" style="background:var(--term-accent-green, #16a34a); color:#fff; font-weight:bold;">
+              [⚡ INGEST &amp; VECTORIZE URL]
+            </button>
+          </div>
+        </div>
+
+        <!-- Note Tab Content -->
+        <div id="capture-tab-content-note" style="display:none; flex-direction:column; gap:10px;">
+          <div class="form-group">
+            <label style="font-size:0.75rem; color:var(--term-text-muted);">Note Title:</label>
+            <input type="text" class="form-input" id="capture-note-title" placeholder="e.g. Model Quantization Rules or Meeting Note" style="width:100%; font-size:0.82rem; padding:6px 8px;">
+          </div>
+          <div class="form-group">
+            <label style="font-size:0.75rem; color:var(--term-text-muted);">Markdown Content / Snippet:</label>
+            <textarea class="form-input" id="capture-note-content" rows="6" placeholder="Paste notes, code snippet, ground-truth facts, or instructions..." style="width:100%; font-family:monospace; font-size:0.82rem; line-height:1.4; padding:8px; resize:vertical;"></textarea>
+          </div>
+          <div class="form-group">
+            <label style="font-size:0.75rem; color:var(--term-text-muted);">Tags (comma separated):</label>
+            <input type="text" class="form-input" id="capture-note-tags" placeholder="notes, prompt, config" style="width:100%; font-size:0.82rem; padding:6px 8px;">
+          </div>
+          <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:8px;">
+            <button type="button" class="term-cmd-btn" onclick="closeQuickCaptureModal()">[CANCEL]</button>
+            <button type="button" class="term-cmd-btn" id="capture-note-submit-btn" onclick="submitQuickCapture('note')" style="background:var(--term-accent-blue, #2563eb); color:#fff; font-weight:bold;">
+              [💾 SAVE NOTE &amp; CHUNKS]
+            </button>
+          </div>
+        </div>
+
+        <!-- Photo Tab Content -->
+        <div id="capture-tab-content-photo" style="display:none; flex-direction:column; gap:10px;">
+          <div class="form-group">
+            <label style="font-size:0.75rem; color:var(--term-text-muted);">Select or Drop Image (resized to 640px, analyzed by <span data-profile="engines.vision.model">the vision engine</span>):</label>
+            <input type="file" id="capture-photo-file-input" accept="image/*" class="form-input" style="width:100%; font-size:0.82rem;" onchange="handleCapturePhotoSelect(event)">
+          </div>
+          <div id="capture-photo-preview-box" style="display:none; text-align:center; padding:8px; background:var(--term-surface); border:1px dashed var(--term-border-dim); border-radius:4px;">
+            <img id="capture-photo-img-preview" src="" style="max-height:160px; max-width:100%; border-radius:3px;" alt="Photo Preview">
+          </div>
+          <div class="form-group">
+            <label style="font-size:0.75rem; color:var(--term-text-muted);">Prompt Hint / Context (Optional):</label>
+            <input type="text" class="form-input" id="capture-photo-hint" placeholder="e.g. Describe this hardware connection or read serial number..." style="width:100%; font-size:0.82rem; padding:6px 8px;">
+          </div>
+          <div class="form-group">
+            <label style="font-size:0.75rem; color:var(--term-text-muted);">Tags (comma separated):</label>
+            <input type="text" class="form-input" id="capture-photo-tags" placeholder="photo, vision, hardware" style="width:100%; font-size:0.82rem; padding:6px 8px;">
+          </div>
+          <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:8px;">
+            <button type="button" class="term-cmd-btn" onclick="closeQuickCaptureModal()">[CANCEL]</button>
+            <button type="button" class="term-cmd-btn" id="capture-photo-submit-btn" onclick="submitQuickCapture('photo')" style="background:var(--term-accent-purple, #9333ea); color:#fff; font-weight:bold;">
+              [👁️ ANALYZE &amp; STORE TO VAULT]
+            </button>
+          </div>
+        </div>
+
+        <!-- Status / Progress Banner -->
+        <div id="quick-capture-status" style="display:none; margin-top:10px; padding:6px 10px; font-size:0.75rem; border-radius:3px; font-family:monospace;"></div>
+      </div>
+    </div>
+
+  <!-- Core StoneSage Runtime & Modules -->
+  <script type="module" src="/js/app.js?v=4.3.2"></script>
+  <script type="module" src="/js/studio3d.js?v=4.0.6"></script>
+</body>
+</html>

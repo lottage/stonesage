@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Aevum-3D: Multi-Tier Agent Citadel & Physical Kanban Deck</title>
+  <link rel="stylesheet" href="citadel.css">
+  
+  <!-- Global Error Diagnostics Banner -->
+  <script>
+    window.addEventListener('error', function(e) {
+      console.error('Citadel Global Error:', e);
+      var container = document.getElementById('webgl-canvas-container') || document.body;
+      var banner = document.getElementById('citadel-error-banner');
+      if (!banner && container) {
+        banner = document.createElement('div');
+        banner.id = 'citadel-error-banner';
+        banner.style.cssText = 'position:fixed;top:40px;left:50%;transform:translateX(-50%);background:#fee2e2;color:#991b1b;border:2px solid #ef4444;padding:12px 18px;border-radius:4px;font-family:monospace;font-size:13px;z-index:99999;max-width:90%;box-shadow:0 4px 12px rgba(0,0,0,0.5);';
+        container.appendChild(banner);
+      }
+      if (banner) {
+        banner.innerHTML = '<strong>⚠️ Citadel JavaScript Error:</strong><br>' + (e.message || (e.error && e.error.message) || 'Unknown error');
+      }
+    });
+  </script>
+
+  <!-- Three.js (r128) + OrbitControls (Local Offline Vendor with CDN Fallback) -->
+  <script src="vendor/three.min.js"></script>
+  <script>
+    if (!window.THREE) {
+      console.warn('Local vendor/three.min.js not available, falling back to CDN...');
+      document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"><\/script>');
+    }
+  </script>
+  <script src="vendor/OrbitControls.js"></script>
+  <script>
+    if (!window.THREE || !window.THREE.OrbitControls) {
+      console.warn('Local vendor/OrbitControls.js not available, falling back to CDN...');
+      document.write('<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"><\/script>');
+    }
+  </script>
+</head>
+<body>
+
+<div id="citadel-container">
+  <!-- 90s Titlebar -->
+  <div class="citadel-titlebar">
+    <div class="titlebar-left">
+      <span>🏛️</span>
+      <span class="titlebar-title">Aevum-3D: Multi-Tier Autonomous Micro-Worlds</span>
+
+      <!-- Titlebar Quick Environment Selector -->
+      <div class="titlebar-selectors">
+        <label for="select-citadel-theme" class="titlebar-label">Environment:</label>
+        <select class="titlebar-select" id="select-citadel-theme" title="Select Architectural Environment">
+          <option value="greenhouse" selected>🌿 Botanical Greenhouse Loft</option>
+          <option value="modern_loft">🏢 Modern Architect Loft</option>
+          <option value="gothic_manor">🏰 Grand Gothic Manor Atrium</option>
+          <option value="arctic_camp">❄️ Arctic Expedition Encampment</option>
+          <option value="cyberpunk_den">🌆 Cyberpunk Hacker Den</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="titlebar-right">
+      <button class="modal-close-btn" style="width: 22px; height: 20px; font-size: 10px;" onclick="window.location.reload()">_</button>
+      <button class="modal-close-btn" style="width: 22px; height: 20px; font-size: 10px;" onclick="document.body.requestFullscreen()">□</button>
+      <button class="modal-close-btn" style="width: 22px; height: 20px; font-size: 10px;" onclick="history.back()">✕</button>
+    </div>
+  </div>
+
+  <!-- WebGL 3D Canvas Area -->
+  <div id="webgl-canvas-container">
+    <canvas id="three-canvas"></canvas>
+
+    <!-- Top-Left Telemetry Ticker -->
+    <div class="hud-ticker">
+      <div><span class="online-dot"></span><strong>AEVUM DUAL-GPU CITADEL</strong></div>
+      <div id="ticker-models">GPU0 :8001 (14B Q8) | GPU1 :8002 (9B Q4) | Z1 :1234 (Claude Hybrid)</div>
+      <div id="ticker-stats">Cloud: 21.5k tok | Cluster: 6.0k tok (22% local) | Saved: $0.09</div>
+      <div style="margin-top: 4px; color: #38bdf8; font-size: 11px;">👆 Tap worker to inspect reasoning | Tap cards to advance Kanban</div>
+    </div>
+
+    <!-- Bottom Touch-Friendly Action Bar -->
+    <div class="touch-action-bar">
+      <button class="touch-btn primary" id="btn-recenter">
+        <span>🔄</span> Center
+      </button>
+      <button class="touch-btn accent" id="btn-open-style-studio">
+        <span>🎨</span> Environments
+      </button>
+      <button class="touch-btn" id="btn-new-agent">
+        <span>👷</span> + Agent
+      </button>
+      <button class="touch-btn" id="btn-mate-agents">
+        <span>🧬</span> Mate Event
+      </button>
+      <button class="touch-btn" id="btn-add-task">
+        <span>📋</span> + Task
+      </button>
+      <button class="touch-btn" id="btn-voice-global">
+        <span>🎙️</span> Voice Mic
+      </button>
+      <button class="touch-btn" id="btn-test-animations">
+        <span>✨</span> Test Anims
+      </button>
+    </div>
+  </div>
+
+  <!-- Environment Studio Modal Backdrop -->
+  <div class="modal-backdrop" id="style-modal-backdrop"></div>
+
+  <!-- Customization Studio Modal -->
+  <div id="citadel-style-modal" class="style-studio-modal">
+    <div class="modal-header">
+      <span>🎨 Architectural Environment Studio</span>
+      <button class="modal-close-btn" id="style-modal-close-btn">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="section-label">🏛️ Select Handcrafted 3D Isometric Micro-World</div>
+      <div class="style-grid">
+        <div class="style-card" onclick="window.setCitadelTheme('greenhouse'); document.getElementById('style-modal-close-btn').click();">
+          <div class="style-card-icon">🌿</div>
+          <div class="style-card-name">Botanical Greenhouse Loft</div>
+          <div class="style-card-desc">Multi-tier split levels, arched sunlit windows, ivy trellises, wooden stairs & conservatory lounge (Image 1)</div>
+        </div>
+        <div class="style-card" onclick="window.setCitadelTheme('modern_loft'); document.getElementById('style-modal-close-btn').click();">
+          <div class="style-card-icon">🏢</div>
+          <div class="style-card-name">Modern Architect Loft</div>
+          <div class="style-card-desc">White cutaway walls, open-riser timber staircase, upper mezzanine, sectional sofa & conversation pit (Image 2)</div>
+        </div>
+        <div class="style-card" onclick="window.setCitadelTheme('gothic_manor'); document.getElementById('style-modal-close-btn').click();">
+          <div class="style-card-icon">🏰</div>
+          <div class="style-card-name">Grand Gothic Manor Atrium</div>
+          <div class="style-card-desc">Multi-story stone arcade galleries, library bookshelves, imperial stairs, banquet table & reflection pool (Image 3)</div>
+        </div>
+        <div class="style-card" onclick="window.setCitadelTheme('arctic_camp'); document.getElementById('style-modal-close-btn').click();">
+          <div class="style-card-icon">❄️</div>
+          <div class="style-card-name">Arctic Expedition Encampment</div>
+          <div class="style-card-desc">Radial snow trails, central flickering campfire, ring of canvas expedition tents & wooden supply wagons (Image 4)</div>
+        </div>
+        <div class="style-card" onclick="window.setCitadelTheme('cyberpunk_den'); document.getElementById('style-modal-close-btn').click();">
+          <div class="style-card-icon">🌆</div>
+          <div class="style-card-name">Cyberpunk Hacker Den</div>
+          <div class="style-card-desc">Multi-tier vertical electronics lab, steel catwalk, server racks, CRT banks, hanging cables & magenta neon (Image 5)</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Backdrop for Inspector -->
+  <div class="modal-backdrop" id="modal-backdrop"></div>
+
+  <!-- Touch-Friendly Agent Inspector Modal -->
+  <div id="agent-inspector-modal">
+    <div class="modal-header">
+      <span id="modal-agent-title">🤖 Agent Inspector: Coordinator Core</span>
+      <button class="modal-close-btn" id="modal-close-btn">✕</button>
+    </div>
+    
+    <div class="modal-body">
+      <!-- Agent Metadata -->
+      <div class="agent-meta-card">
+        <div class="agent-meta-left">
+          <span class="agent-name" id="insp-agent-name">Coordinator-Alpha</span>
+          <span class="agent-role" id="insp-agent-role">Principal Systems Architect (RX 6750 XT)</span>
+        </div>
+        <div class="agent-badge badge-coordinator" id="insp-agent-badge">Vulkan0 :8001</div>
+      </div>
+
+      <!-- Real-Time Streaming Reasoning Terminal -->
+      <div class="reasoning-header">
+        <span>⚡ LIVE REASONING STREAM (&lt;think&gt; TRACE)</span>
+        <span id="insp-reasoning-speed">38.4 tok/s | 0 cloud tokens</span>
+      </div>
+      <div class="reasoning-terminal-pane" id="insp-reasoning-terminal">
+Initializing neural bridge to agent telemetry...
+Ready for instructions.
+      </div>
+
+      <!-- Long-Term Task Queue -->
+      <div class="task-queue-section">
+        <div class="section-label">📋 Autonomous 24/7 Task Queue & History</div>
+        <ul class="task-list" id="insp-task-list">
+          <li class="task-item">
+            <span>Verify lock-free ring buffer memory order</span>
+            <span class="task-status-pill pill-doing">DOING</span>
+          </li>
+          <li class="task-item">
+            <span>Benchmark ABA hazard resolution on Vulkan0</span>
+            <span class="task-status-pill pill-todo">TO DO</span>
+          </li>
+          <li class="task-item">
+            <span>Dossier: Cosine novelty filtering threshold</span>
+            <span class="task-status-pill pill-done">DONE</span>
+          </li>
+        </ul>
+      </div>
+
+      <!-- Direct Command Console -->
+      <div class="command-console-section">
+        <div class="section-label">💬 Direct Agent Guidance Console</div>
+        <div class="command-input-row">
+          <input type="text" class="command-text-input" id="insp-command-input" placeholder="Type prompt, directive, or new task for agent...">
+          <button class="touch-btn primary" id="insp-btn-send" style="min-width: 90px;">
+            <span>⚡</span> Send
+          </button>
+        </div>
+
+        <div class="command-buttons-row">
+          <button class="touch-btn" id="insp-btn-mic">
+            <span>🎙️</span> Whisper STT (:8200)
+          </button>
+          <button class="touch-btn" id="insp-btn-speak">
+            <span>🔊</span> Kokoro TTS (:8300)
+          </button>
+          <button class="touch-btn danger" id="insp-btn-nudge">
+            <span>🚨</span> Nudge Loop Breaker
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Main Modules -->
+<script type="module" src="citadel_world.js?v=20260914_2"></script>
+
+</body>
+</html>

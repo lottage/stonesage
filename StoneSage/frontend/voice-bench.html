@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Voice test</title>
+<style>
+  :root { color-scheme: dark; --bg:#0b0f14; --card:#141b24; --ink:#e6edf3; --dim:#8b98a5; --ok:#3fb950; --bad:#f85149; --acc:#d29922; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.4 system-ui, sans-serif; padding:16px; max-width:640px; margin-inline:auto; }
+  h1 { font-size:18px; margin:0 0 4px; }
+  .dim { color:var(--dim); font-size:14px; }
+  .bar { height:6px; background:#222c38; border-radius:3px; margin:10px 0 16px; overflow:hidden; }
+  .bar > div { height:100%; background:var(--acc); width:0; transition:width .3s; }
+  .card { background:var(--card); border-radius:12px; padding:18px; margin-bottom:14px; }
+  .phrase { font-size:26px; font-weight:600; margin:6px 0 4px; }
+  .cond { display:inline-block; padding:2px 8px; border-radius:10px; font-size:12px; background:#222c38; }
+  .cond.far { background:#5a3d00; color:#ffd479; }
+  button { font:inherit; border:0; border-radius:10px; padding:14px 18px; color:#fff; background:#2f6feb; width:100%; margin-top:10px; }
+  button.rec { background:var(--bad); font-size:20px; padding:22px; }
+  button.sec { background:#2b3745; }
+  button:disabled { opacity:.5; }
+  table { width:100%; border-collapse:collapse; font-size:14px; }
+  td, th { padding:5px 4px; text-align:left; border-bottom:1px solid #222c38; vertical-align:top; }
+  .ok { color:var(--ok); } .bad { color:var(--bad); }
+  .row { display:flex; gap:10px; } .row button { margin-top:10px; }
+</style>
+</head>
+<body>
+<h1>Voice test</h1>
+<div class="dim">Read each phrase the way you would say it to Computer. Tap the red button, speak, tap again. ~5 minutes.</div>
+<div class="bar"><div id="bar"></div></div>
+
+<div class="card" id="card">
+  <div class="dim" id="count"></div>
+  <div class="phrase" id="phrase">Loading...</div>
+  <span class="cond" id="cond"></span>
+  <div class="dim" id="hint" style="margin-top:8px"></div>
+  <button id="rec" class="rec">● Record</button>
+  <div class="row"><button id="redo" class="sec" disabled>Redo</button><button id="next" class="sec" disabled>Next ›</button></div>
+</div>
+<div class="card" id="res" hidden></div>
+<div class="card" id="sum" hidden></div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let phrases = [], idx = 0, rec = null, chunks = [], stream = null, busy = false;
+
+function b64(buf) { let s = ''; const b = new Uint8Array(buf); for (let i = 0; i < b.length; i++) s += String.fromCharCode(b[i]); return btoa(s); }
+function mime() {
+  return ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4'].find((m) => window.MediaRecorder && MediaRecorder.isTypeSupported(m)) || '';
+}
+
+async function load() {
+  const r = await (await fetch('/api/voice/bench/phrases')).json();
+  phrases = r.phrases;
+  idx = Math.max(0, phrases.findIndex((p) => !p.done));
+  if (phrases.every((p) => p.done)) idx = phrases.length;
+  show();
+}
+
+function show() {
+  $('bar').style.width = (100 * phrases.filter((p) => p.done).length / phrases.length) + '%';
+  $('res').hidden = true;
+  if (idx >= phrases.length) { finish(); return; }
+  const p = phrases[idx];
+  $('count').textContent = `Phrase ${idx + 1} of ${phrases.length}`;
+  $('phrase').textContent = p.text;
+  $('cond').textContent = p.cond === 'far' ? 'FAR' : 'normal';
+  $('cond').className = 'cond ' + p.cond;
+  $('hint').textContent = p.cond === 'far'
+    ? 'Step back about 3 metres from the phone, or turn the TV on quietly, then say it normally.' : '';
+  $('rec').disabled = false; $('rec').textContent = '● Record'; $('redo').disabled = true; $('next').disabled = true;
+}
+
+$('rec').onclick = async () => {
+  if (busy) return;
+  if (rec && rec.state === 'recording') { rec.stop(); return; }
+  try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+  catch (e) { alert('Microphone blocked: ' + e.message); return; }
+  chunks = [];
+  const m = mime();
+  rec = new MediaRecorder(stream, m ? { mimeType: m } : {});
+  rec.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
+  rec.onstop = async () => {
+    stream.getTracks().forEach((t) => t.stop());
+    busy = true; $('rec').disabled = true; $('rec').textContent = 'Listening with every engine...';
+    const blob = new Blob(chunks, { type: rec.mimeType || 'audio/webm' });
+    try {
+      const r = await (await fetch('/api/voice/bench/sample', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phrase_id: phrases[idx].id, audio_base64: b64(await blob.arrayBuffer()), mime_type: blob.type }) })).json();
+      if (!r.ok) throw new Error(r.error);
+      phrases[idx].done = true; results(r);
+    } catch (e) { $('rec').textContent = 'Error: ' + e.message + ' (tap to retry)'; $('rec').disabled = false; }
+    busy = false;
+  };
+  rec.start(); $('rec').textContent = '■ Stop';
+};
+
+function results(r) {
+  $('res').hidden = false;
+  $('res').innerHTML = '<div class="dim">What each engine heard</div><table>' + r.results.map((x) =>
+    `<tr><td>${x.engine}</td><td class="${x.error ? 'bad' : x.errors ? 'bad' : 'ok'}">${x.error ? 'error' : x.errors ? '&#10007;' : '&#10003;'}</td>` +
+    `<td>${x.error ? x.error : (x.text || '(nothing)')}</td><td class="dim">${x.ms ?? ''}${x.ms ? ' ms' : ''}</td></tr>`).join('') + '</table>';
+  $('rec').textContent = 'Recorded'; $('redo').disabled = false; $('next').disabled = false;
+  $('bar').style.width = (100 * phrases.filter((p) => p.done).length / phrases.length) + '%';
+}
+
+$('redo').onclick = () => { $('rec').disabled = false; $('rec').textContent = '● Record'; $('redo').disabled = true; $('next').disabled = true; $('res').hidden = true; };
+$('next').onclick = () => { idx++; show(); };
+
+async function finish() {
+  $('card').hidden = true;
+  const s = await (await fetch('/api/voice/bench/results')).json();
+  $('sum').hidden = false;
+  $('sum').innerHTML = `<div class="phrase" style="font-size:20px">Done, thank you.</div><div class="dim">${s.recorded} of ${s.of} recorded. Word error rate, lower is better:</div>` +
+    '<table><tr><th>Engine</th><th>Errors</th><th>Far</th><th>Speed</th></tr>' + s.engines.map((e) =>
+      `<tr><td>${e.engine}</td><td>${e.wer_pct ?? '-'}%</td><td>${e.far_wer_pct ?? '-'}%</td><td>${e.median_ms ?? '-'} ms</td></tr>`).join('') + '</table>';
+}
+load();
+</script>
+</body>
+</html>

@@ -1,0 +1,949 @@
+{
+ "/api/3d/gallery": {
+  "keys": [
+   "error",
+   "gallery",
+   "ok"
+  ],
+  "status": 200,
+  "type": "application/json"
+ },
+ "/api/3d/scene": {
+  "keys": [
+   "error",
+   "ok"
+  ],
+  "status": 200,
+  "type": "application/json"
+ },
+ "/api/agent/stream": {
+  "keys": [
+   "active_agents",
+   "agents_online",
+   "channel",
+   "channels",
+   "entries",
+   "events",
+   "formatted_log",
+   "ok",
+   "thinking_status",
+   "timestamp",
+   "total_agents"
+  ],
+  "status": 200,
+  "type": "application/json"
+ },
+ "/api/agent_dna/export": {
+  "keys": [
+   "error",
+   "ok"
+  ],
+  "status": 500,
+  "type": "application/json"
+ },
+ "/api/agent_dna/get": {
+  "keys": [
+   "error",
+   "ok"
+  ],
+  "status": 404,
+  "type": "application/json"
+ },
+ "/api/agent_dna/list": {
+  "keys": [
+   "agents",
+   "ok"
+  ],
+  "status": 200,
+  "type": "application/json"
+ },
+ "/api/agents/list": {
+  "keys": [
+   "builtin_agents",
+   "custom_agents",
+   "ok",
+   "workspace_agent"
+  ],
+  "status": 200,
+  "type": "application/json"
+ },
+ "/api/ai/coordinator/v1/models": {
+  "keys": [
+   "data",
+   "object"
+  ],
+  "status": 200,
+  "type": "application/json"
+ },
+ "/api/ai/worker/v1/models": {
+  "keys": [
+   "data",
+   "object"
+  ],
+  "status": 200,
+  "type": "application/json"
+ },
+ "/api/chat/sessions": {
+  "keys": [
+   "ok",
+   "sessions"
+  ],
+  "status": 200,
+  "type": "application/json"
+ },
+ "/api/chat/sessions/messages": {
+  "keys": [
+   "error",
+   "ok"
+  ],
+  "status": 400,
+  "type": "application/json"
+ },
+ "/api/cluster/chat/events": {
+  "keys": [
+   "event_count",
+   "events",
+   "ok",
+   "session_id",
+   "since_id",
+   "status"
+  ],
+  "status": 200,
+  "type": "application/json"
+ },
+ "/api/cluster/context_mode": {
+  "keys": [
+   "error",
+   "ok"
+  ],
+  "status": 500,
+  "type": "application/json"
+ },
+ "/api/cluster/health": {
+  "keys": [
+   "cluster",
+   "ok"
+  ],
+  "status": 200,
+  "type": "application/json"
+ },
+ "/api/cluster/mode": {
+  "keys": [
+   "error",
+   "ok"
+  ],
+  "status": 500,
+  "type": "application/json"
+ },
+ "/api/cluster/models": {
+  "keys": [
+   "active_context",
+   "active_ftype",
+   "active_model",
+   "calibration",
+   "disk",
+   "model_type",
+   "models",
+   "ok"
+  ],
+  "status": 200,
+  "type": "application/json"
+ },
+ "/api/cluster/modes": {
+  "keys": [
+   "active_mode",
+   "active_profile",
+   "ok",
+   "profiles",
+   "switching"
+  ],
+  "status": 200,
+  "type": "application/json"
+ },
+ "/api/cluster/telemetry": {
+  "keys": [
+   "cluster_status",
+   "models",
+   "nodes",
+   "ok",
+   "probe_error",
+   "timestamp"
+  ],
+  "status": 200,
+  "type": "application/json"
+ },
+ "/api/config": {
+  "keys": [
+   "boost",
+   "cluster",
+   "couchdb",
+   "engine_layouts",
+   "engine_profiles",
+   "engine_stand_ins",
+   "obsidian",
+   "project_phase",
+   "provenance",
+   "proxmox",
+   "server"
+  ],
+  "status": 200,
+  "type": "application/json"
+ },
+ "/api/couchdb/status": {
+  "keys": [
+   "database",
+   "error",
+   "online",
+   "url"
+  ],
+  "status": 200,
+  "type": "application/json"
+ },
+ "/api/courage/memories": {
+  "keys": [
+   "memories",
+   "ok"
+  ],
+  "status": 200,
+  "type": "application/json"
+ },
+ "/api/courage/reflexes": {
+  "keys": [
+   "ok",
+   "reflexes"
+  ],
+  "status": 200,
+  "type": "application/json"
+ },
+ "/api/courage/trace": {
+  "keys": [
+   "ok",
+   "turns"
+  ],
+  "status": 200,
+  "type": "application/json"
+ },
+ "/api/courage/trace/summary": {
+  "keys": [
+   "ok",
+   "summary"
+  ],
+  "status": 200,
+  "type": "application/json"
+ },
+ "/api/dataset/status": {
+  "keys": [
+   "ok",
+   "status"
+  ],
+  "status": 200,
+  "type": "application/json"
+ },
+ "/api/engine-profiles": {
+  "keys": [
+   "ok",
+   "profiles",
+   "project_phase"
+  ],
+  "status": 200,
+  "type": "application/json"
+ },
+ "/api/engine-profiles/job": {
+  "keys": [
+   "error"
+  ],
+  "status": 200,
+  "type": "application/json"
+ },
+ "/api/engine/logs": {
+  "keys": [
+   "error",
+   "ok"
+  ],
+  "status": 400,
+  "type": "application/json"
+ },
+ "/api/engine/state": {
+  "keys": [
+   "engine",
+   "ok"
+  ],
+  "status": 200,
+  "type": "application/json"
+ },
+ "/api/engine/state/all": {
+  "keys": [
+   "engines",
+   "ok",
+   "timestamp"
+  ],
+  "status": 200,
+  "type": "application/json"
+ },
+ "/api/engine/state/dynamic": {
+  "keys": [
+   "error",
+   "ok"
+  ],
+  "status": 400,
+  "type": "application/json"
+ },
+ "/api/engines/lease": {
+  "keys": [
+   "layouts",
+   "lease",
+   "ok"
+  ],
+  "status": 200,
+  "type": "application/json"
+ },
+ "/api/garden/status": {
+  "keys": [
+   "data",
+   "ok"
+  ],
+  "status": 200,
+  "type": "application/json"
+ },
+ "/api/git/repos/discovered": {
+  "keys": [
+   "active_repo",
+   "ok",
+   "repos"
+  ],
+  "status": 200,
+  "type": "application/json"
+ },
+ "/api/git/status": {
+  "keys": [
+   "branch",
+   "changed_files",
+   "is_repo",
+   "ok",
+   "recent_commits",
+   "remote_url",
+   "repo_dir",
+   "repo_name"
+  ],
+  "status": 200,
+  "type": "application/json"
+ },
+ "/api/ha/activity_and_ai_logs": {
+  "keys": [
+   "ai_entities",
+   "filter",
+   "ha_events",
+   "log",
+   "ok",
+   "stats",
+   "timestamp",
+   "total_ai_configured",
+   "total_ai_entities",
+   "total_ai_unlinked",
+   "voice_stack"
+  ],
+  "status": 200,
+  "type": "application/json"
+ },
+ "/api/harness/active-session": {
+  "keys": [
+   "active_tool",
+   "agent_id",
+   "elapsed_sec",
+   "error",
+   "event_count",
+   "loop_phrase",
+   "loop_warning",
+   "model",
+   "ok",
+   "output",
+   "prompt",
+   "reasoning",
+   "session_id",
+   "started_at",
+   "status",
+   "tokens_count",
+   "tps",
+   "ttft_ms"
+  ],
+  "status": 200,
+  "type": "application/json"
+ },
+ "/api/harness/amem": {
+  "keys": [
+   "cards",
+   "ok"
+  ],
+  "status": 200,
+  "type": "application/json"
+ },
+ "/api/harness/capabilities": {
+  "keys": [
+   "active_coordinator",
+   "active_worker",
+   "available_backends",
+   "available_harnesses",
+   "installed_models",
+   "ok",
+   "timezone"
+  ],
+  "status": 200,
+  "type": "application/json"
+ },
+ "/api/harness/fleet": {
+  "keys": [
+   "fleet",
+   "ok"
+  ],
+  "status": 200,
+  "type": "application/json"
+ },
+ "/api/harness/hardware": {
+  "keys": [
+   "hardware",
+   "ok"
+  ],
+  "status": 200,
+  "type": "application/json"
+ },
+ "/api/harness/instances": {
+  "keys": [
+   "active_id",
+   "active_instance",
+   "instances",
+   "ok",
+   "total_instances"
+  ],
+  "status": 200,
+  "type": "application/json"
+ },
+ "/api/harness/logs": {
+  "keys": [
+   "logs",
+   "ok",
+   "total"
+  ],
+  "status": 200,
+  "type": "application/json"
+ },
+ "/api/harness/models": {
+  "keys": [
+   "models",
+   "node_id",
+   "ok"
+  ],
+  "status": 200,
+  "type": "application/json"
+ },
+ "/api/harness/models/download/status": {
+  "keys": [
+   "download",
+   "ok"
+  ],
+  "status": 200,
+  "type": "application/json"
+ },
+ "/api/harness/nodes": {
+  "keys": [
+   "active_node_id",
+   "nodes",
+   "ok"
+  ],
+  "status": 200,
+  "type": "application/json"
+ },
+ "/api/harness/parameters": {
+  "keys": [
+   "data",
+   "harness",
+   "ok"
+  ],
+  "status": 200,
+  "type": "application/json"
+ },
+ "/api/harness/profiles": {
+  "keys": [
+   "active_profile",
+   "ok",
+   "profiles"
+  ],
+  "status": 200,
+  "type": "application/json"
+ },
+ "/api/harness/profiles/active": {
+  "keys": [
+   "active_profile",
+   "ok",
+   "profile_data"
+  ],
+  "status": 200,
+  "type": "application/json"
+ },
+ "/api/harness/tools": {
+  "keys": [
+   "amem_cards",
+   "dynamic_count",
+   "max_dynamic",
+   "ok",
+   "tools"
+  ],
+  "status": 200,
+  "type": "application/json"
+ },
+ "/api/health/all": {
+  "keys": [
+   "checked_at",
+   "ok",
+   "services",
+   "summary"
+  ],
+  "status": 200,
+  "type": "application/json"
+ },
+ "/api/hivemind/activity_and_ai_logs": {
+  "keys": [
+   "ai_entities",
+   "filter",
+   "ha_events",
+   "log",
+   "ok",
+   "stats",
+   "timestamp",
+   "total_ai_configured",
+   "total_ai_entities",
+   "total_ai_unlinked",
+   "voice_stack"
+  ],
+  "status": 200,
+  "type": "application/json"
+ },
+ "/api/hivemind/agent_stream": {
+  "keys": [
+   "active_agents",
+   "agents_online",
+   "channel",
+   "channels",
+   "entries",
+   "events",
+   "formatted_log",
+   "ok",
+   "thinking_status",
+   "timestamp",
+   "total_agents"
+  ],
+  "status": 200,
+  "type": "application/json"
+ },
+ "/api/hivemind/agents": {
+  "keys": [
+   "agents",
+   "error",
+   "ok"
+  ],
+  "status": 500,
+  "type": "application/json"
+ },
+ "/api/hivemind/dossier/content": {
+  "keys": [
+   "error",
+   "ok"
+  ],
+  "status": 400,
+  "type": "application/json"
+ },
+ "/api/hivemind/dossiers": {
+  "keys": [
+   "error",
+   "ok"
+  ],
+  "status": 500,
+  "type": "application/json"
+ },
+ "/api/hivemind/live_stream": {
+  "keys": [
+   "active_agents",
+   "agents_online",
+   "channel",
+   "channels",
+   "entries",
+   "events",
+   "formatted_log",
+   "ok",
+   "thinking_status",
+   "timestamp",
+   "total_agents"
+  ],
+  "status": 200,
+  "type": "application/json"
+ },
+ "/api/hivemind/status": {
+  "keys": [
+   "error",
+   "ok"
+  ],
+  "status": 500,
+  "type": "application/json"
+ },
+ "/api/hivemind/vision_log": {
+  "keys": [
+   "ai_entities",
+   "filter",
+   "ha_events",
+   "log",
+   "ok",
+   "stats",
+   "timestamp",
+   "total_ai_configured",
+   "total_ai_entities",
+   "total_ai_unlinked",
+   "voice_stack"
+  ],
+  "status": 200,
+  "type": "application/json"
+ },
+ "/api/idle-gate": {
+  "keys": [
+   "checked_at",
+   "gpus",
+   "household",
+   "ok",
+   "open",
+   "pending_approvals",
+   "shared_reasons"
+  ],
+  "status": 200,
+  "type": "application/json"
+ },
+ "/api/knowledge/status": {
+  "keys": [
+   "exists",
+   "file_count",
+   "kb_path",
+   "ok"
+  ],
+  "status": 200,
+  "type": "application/json"
+ },
+ "/api/loader/job": {
+  "keys": [
+   "error"
+  ],
+  "status": 200,
+  "type": "application/json"
+ },
+ "/api/loader/library": {
+  "keys": [
+   "models",
+   "node"
+  ],
+  "status": 200,
+  "type": "application/json"
+ },
+ "/api/loader/options": {
+  "keys": [
+   "current",
+   "engine",
+   "error",
+   "options"
+  ],
+  "status": 200,
+  "type": "application/json"
+ },
+ "/api/loader/state": {
+  "keys": [
+   "nodes",
+   "probe_error",
+   "updated_at"
+  ],
+  "status": 200,
+  "type": "application/json"
+ },
+ "/api/memory/amem": {
+  "keys": [
+   "average_tokens",
+   "cards",
+   "categories",
+   "filtered_count",
+   "ok",
+   "query",
+   "selected_category",
+   "total_cards",
+   "valkey_host",
+   "valkey_online"
+  ],
+  "status": 200,
+  "type": "application/json"
+ },
+ "/api/memory/stm": {
+  "keys": [
+   "active_plan",
+   "estimated_tokens",
+   "has_active_plan",
+   "item_count",
+   "items",
+   "last_updated",
+   "ok",
+   "pinned_context"
+  ],
+  "status": 200,
+  "type": "application/json"
+ },
+ "/api/models": {
+  "keys": [
+   "models"
+  ],
+  "status": 200,
+  "type": "application/json"
+ },
+ "/api/obsidian/databases": {
+  "keys": [
+   "databases",
+   "default_database",
+   "ok"
+  ],
+  "status": 200,
+  "type": "application/json"
+ },
+ "/api/obsidian/note": {
+  "keys": [
+   "error",
+   "ok"
+  ],
+  "status": 200,
+  "type": "application/json"
+ },
+ "/api/obsidian/notes": {
+  "keys": [
+   "couchdb_count",
+   "database",
+   "local_count",
+   "notes",
+   "ok",
+   "total_count"
+  ],
+  "status": 200,
+  "type": "application/json"
+ },
+ "/api/obsidian/search": {
+  "keys": [
+   "error",
+   "ok"
+  ],
+  "status": 400,
+  "type": "application/json"
+ },
+ "/api/obsidian/sync_status": {
+  "keys": [
+   "couchdb",
+   "ok",
+   "sync"
+  ],
+  "status": 200,
+  "type": "application/json"
+ },
+ "/api/preemption/status": {
+  "keys": [
+   "error",
+   "is_preempted"
+  ],
+  "status": 200,
+  "type": "application/json"
+ },
+ "/api/profiles/list": {
+  "keys": [
+   "ok",
+   "profiles"
+  ],
+  "status": 200,
+  "type": "application/json"
+ },
+ "/api/provenance": {
+  "keys": [
+   "builds",
+   "hashed",
+   "hashed_at",
+   "last_error",
+   "models",
+   "ok",
+   "scanned_at"
+  ],
+  "status": 200,
+  "type": "application/json"
+ },
+ "/api/proxmox/guests": {
+  "keys": [
+   "guests",
+   "ok"
+  ],
+  "status": 200,
+  "type": "application/json"
+ },
+ "/api/proxmox/nodes": {
+  "keys": [
+   "nodes",
+   "ok"
+  ],
+  "status": 200,
+  "type": "application/json"
+ },
+ "/api/services/status": {
+  "keys": [
+   "ok",
+   "services"
+  ],
+  "status": 200,
+  "type": "application/json"
+ },
+ "/api/status/markdown": {
+  "keys": [
+   "error"
+  ],
+  "status": 404,
+  "type": "application/json"
+ },
+ "/api/subagents/list": {
+  "keys": [
+   "ok",
+   "subagents"
+  ],
+  "status": 200,
+  "type": "application/json"
+ },
+ "/api/system/profile": {
+  "keys": [
+   "engines",
+   "gpus",
+   "host",
+   "probe_error",
+   "updated_at"
+  ],
+  "status": 200,
+  "type": "application/json"
+ },
+ "/api/system/tools_and_skills": {
+  "keys": [
+   "ok",
+   "scanned_at",
+   "skills",
+   "tools",
+   "total_skills",
+   "total_tools"
+  ],
+  "status": 200,
+  "type": "application/json"
+ },
+ "/api/tags": {
+  "keys": [
+   "models"
+  ],
+  "status": 200,
+  "type": "application/json"
+ },
+ "/api/task_routing": {
+  "keys": [
+   "gemini_web",
+   "ok",
+   "task_routing"
+  ],
+  "status": 200,
+  "type": "application/json"
+ },
+ "/api/trainer/curation": {
+  "keys": [
+   "frontier_verified_count",
+   "human_approved_count",
+   "ok",
+   "pending_review_count",
+   "quarantined_count",
+   "samples",
+   "total"
+  ],
+  "status": 200,
+  "type": "application/json"
+ },
+ "/api/trainer/dossier": {
+  "keys": [
+   "error",
+   "ok"
+  ],
+  "status": 200,
+  "type": "application/json"
+ },
+ "/api/trainer/passdown": {
+  "keys": [
+   "compact_card",
+   "content",
+   "ok"
+  ],
+  "status": 200,
+  "type": "application/json"
+ },
+ "/api/trainer/status": {
+  "keys": [
+   "golden_invariants",
+   "is_busy",
+   "logs",
+   "ok",
+   "training_status",
+   "vram_specs"
+  ],
+  "status": 200,
+  "type": "application/json"
+ },
+ "/api/version": {
+  "keys": [
+   "version"
+  ],
+  "status": 200,
+  "type": "application/json"
+ },
+ "/api/watchdog/status": {
+  "keys": [
+   "armed",
+   "history",
+   "intercept_count",
+   "last_intercept",
+   "ok"
+  ],
+  "status": 200,
+  "type": "application/json"
+ },
+ "/api/workspace/file": {
+  "keys": [
+   "error",
+   "ok"
+  ],
+  "status": 400,
+  "type": "application/json"
+ },
+ "/api/workspace/tree": {
+  "keys": [
+   "current_dir",
+   "ok",
+   "parent_dir",
+   "presets",
+   "tree"
+  ],
+  "status": 200,
+  "type": "application/json"
+ },
+ "/api/workspaces/agent": {
+  "keys": [
+   "agent",
+   "error",
+   "ok"
+  ],
+  "status": 200,
+  "type": "application/json"
+ },
+ "/api/workspaces/list": {
+  "keys": [
+   "active_workspace",
+   "ok",
+   "roots",
+   "workspaces"
+  ],
+  "status": 200,
+  "type": "application/json"
+ }
+}

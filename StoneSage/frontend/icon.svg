@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <radialGradient id="stoneGrad" cx="35%" cy="30%" r="70%">
+      <stop offset="0%" stop-color="#2a3330"/>
+      <stop offset="50%" stop-color="#181d1b"/>
+      <stop offset="100%" stop-color="#0f1312"/>
+    </radialGradient>
+    <linearGradient id="sageLeafGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#78ab93"/>
+      <stop offset="50%" stop-color="#52826c"/>
+      <stop offset="100%" stop-color="#38594b"/>
+    </linearGradient>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="4" stdDeviation="12" flood-color="#52826c" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+
+  <!-- Dark Stone Background Pebble Shape -->
+  <rect width="512" height="512" rx="128" fill="url(#stoneGrad)"/>
+  <rect width="504" height="504" x="4" y="4" rx="124" fill="none" stroke="#2b3632" stroke-width="4"/>
+
+  <!-- Sage Leaf Botanical Symbol -->
+  <g filter="url(#glow)">
+    <!-- Main Leaf -->
+    <path d="M256 100 C340 100 400 170 400 270 C400 370 320 420 256 420 C192 420 112 370 112 270 C112 170 172 100 256 100 Z" 
+          fill="url(#sageLeafGrad)"/>
+    
+    <!-- Central Stem -->
+    <path d="M256 120 L256 400" stroke="#eae7dc" stroke-width="8" stroke-linecap="round" opacity="0.65"/>
+    
+    <!-- Side Veins -->
+    <path d="M256 180 Q300 210 330 220" stroke="#eae7dc" stroke-width="6" stroke-linecap="round" opacity="0.5"/>
+    <path d="M256 240 Q310 270 340 280" stroke="#eae7dc" stroke-width="6" stroke-linecap="round" opacity="0.5"/>
+    <path d="M256 300 Q290 330 310 340" stroke="#eae7dc" stroke-width="5" stroke-linecap="round" opacity="0.5"/>
+
+    <path d="M256 180 Q212 210 182 220" stroke="#eae7dc" stroke-width="6" stroke-linecap="round" opacity="0.5"/>
+    <path d="M256 240 Q202 270 172 280" stroke="#eae7dc" stroke-width="6" stroke-linecap="round" opacity="0.5"/>
+    <path d="M256 300 Q222 330 202 340" stroke="#eae7dc" stroke-width="5" stroke-linecap="round" opacity="0.5"/>
+  </g>
+</svg>

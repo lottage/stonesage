@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "stonesage"
+version = "0.1.0"
+description = "Agent platform on top of Lodestone: souls, a tool-calling loop with approvals, memory, traces, evals and a web cockpit."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "Unlicense"
+license-files = ["LICENSE"]
+dependencies = [
+  "lodestone @ git+https://github.com/lottage/lodestone",
+  "rich>=13.0.0",
+  "prompt_toolkit>=3.0.0",
+  "websockets>=12.0",
+  "redis>=5.0.0",
+  "Pillow>=10.0.0"
+]
+
+[project.urls]
+Homepage = "https://github.com/lottage/stonesage"
+
+[tool.setuptools]
+packages = [
+  "harness",
+  "harness.cli",
+  "harness.connectors",
+  "harness.core",
+  "harness.data_fabric",
+  "harness.edge_fleet",
+  "harness.security",
+  "harness.trainer_bridge",
+  "harness.training",
+  "stonesage",
+  "stonesage.courage"
+]
+
+[tool.setuptools.package-dir]
+stonesage = "StoneSage/backend/stonesage"
+harness = "harness"

@@ -1,0 +1,32 @@
+{
+  "_comment": "Copy to config.json (or run `python -m stonesage.first_run`). config.json holds secrets and is never committed.",
+  "operator": {
+    "pronouns": [
+      "they",
+      "them"
+    ],
+    "name": ""
+  },
+  "cluster": {
+    "coordinator_url": "http://127.0.0.1:8001/v1",
+    "worker_url": "http://127.0.0.1:8002/v1",
+    "embedder_url": "http://127.0.0.1:8003/v1",
+    "vision_url": "http://127.0.0.1:8004/v1",
+    "ssh_user": ""
+  },
+  "household": {
+    "owner_pronouns": [
+      "they",
+      "them"
+    ],
+    "people": [],
+    "pets": {}
+  },
+  "homeassistant": {
+    "url": "http://homeassistant.local:8123",
+    "token": ""
+  },
+  "server": {
+    "timezone": ""
+  }
+}
