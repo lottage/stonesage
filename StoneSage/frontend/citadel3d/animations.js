@@ -1,5 +1,5 @@
 /**
- * Aevum-3D: Procedural Skeletal Animations
+ * StoneSage 3D: Procedural Skeletal Animations
  * Zero external asset downloads - Pure hierarchical Three.js transforms
  */
 

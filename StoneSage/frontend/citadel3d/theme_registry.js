@@ -1,5 +1,5 @@
 /**
- * Aevum-3D: Environment Theme Registry
+ * StoneSage 3D: Environment Theme Registry
  * Configures lighting, fog, materials, and decorative props for each architectural theme
  */
 

@@ -12,6 +12,8 @@ from datetime import datetime
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
 
+from ..legacy_names import canonical_agent_id, canonical_agent_name, legacy_ids_for
+
 logger = logging.getLogger("Harness.OpenClaw")
 
 @dataclass
@@ -167,12 +169,12 @@ class OpenClawEngine:
                     try:
                         with open(p_path, "r", encoding="utf-8") as f:
                             data = json.load(f)
-                            aid = data.get("agent_id") or fname[:-5]
+                            aid = canonical_agent_id(data.get("agent_id") or fname[:-5])
                             if aid not in seen_ids:
                                 seen_ids.add(aid)
                                 profiles.append({
                                     "agent_id": aid,
-                                    "name": data.get("name", aid.title()),
+                                    "name": canonical_agent_name(data.get("name", aid.title())),
                                     "role": data.get("role", "Autonomous Agent"),
                                     "mission": data.get("mission", ""),
                                     "assigned_node": data.get("assigned_node", "node1_primary"),
@@ -213,16 +215,21 @@ class OpenClawEngine:
         """
         Retrieves full agent profile and contracts by agent_id.
         """
-        clean_id = agent_id.strip().lower()
+        clean_id = canonical_agent_id(agent_id)
 
-        # Check profiles_dir
-        json_path = os.path.join(self.profiles_dir, f"{clean_id}.json")
+        # Check profiles_dir (a profile written before an agent was renamed may still be stored under its old id)
+        stored_id, json_path = clean_id, os.path.join(self.profiles_dir, f"{clean_id}.json")
+        for old_id in legacy_ids_for(clean_id):
+            if not os.path.exists(json_path):
+                stored_id, json_path = old_id, os.path.join(self.profiles_dir, f"{old_id}.json")
         if os.path.exists(json_path):
             try:
                 with open(json_path, "r", encoding="utf-8") as f:
                     meta = json.load(f)
+                meta["agent_id"] = clean_id
+                meta["name"] = canonical_agent_name(meta.get("name", clean_id))
 
-                agent_dir = os.path.join(self.profiles_dir, clean_id)
+                agent_dir = os.path.join(self.profiles_dir, stored_id)
                 def read_doc(doc_name):
                     p = os.path.join(agent_dir, doc_name)
                     if os.path.exists(p):
@@ -253,7 +260,7 @@ class OpenClawEngine:
                 "role": founder.title,
                 "mission": founder.mission,
                 "autonomy_level": "tiered",
-                "assigned_node": "node1_primary" if founder.id in ("aule", "aevum") else "node1_secondary",
+                "assigned_node": "node1_primary" if founder.id in ("aule", "atlas") else "node1_secondary",
                 "is_founder": True,
                 "weight": founder.weight,
                 "invariants": founder.invariants,

@@ -1,5 +1,5 @@
 """
-Aevum Mesh: Sovereign Agent Hive Network & Autonomous Play Engine.
+StoneSage Mesh: Sovereign Agent Hive Network & Autonomous Play Engine.
 Orchestrates multi-node agent presence, user task tracking, heartbeat monitoring,
 and autonomous self-directed play (The Agora chatboard :8766 and research dossiers)
 when no user activity is scheduled.
@@ -16,12 +16,13 @@ from datetime import datetime
 from typing import Dict, Any, List, Optional
 
 from ..config import fleet_config
+from ..legacy_names import canonical_agent_id
 
 from .openclaw_engine import openclaw_engine
 from ..data_fabric.pg_storage import relational_storage
 from ..data_fabric.valkey_amem import valkey_amem
 
-logger = logging.getLogger("Harness.AevumMesh")
+logger = logging.getLogger("Harness.StoneSageMesh")
 
 # Self-directed topics of inquiry by department/archetype
 AUTONOMOUS_PLAYBOOK = {
@@ -44,7 +45,7 @@ AUTONOMOUS_PLAYBOOK = {
     ]
 }
 
-class AevumMesh:
+class StoneSageMesh:
     def __init__(self, assembly_url: str = ""):
         self.assembly_url = assembly_url or fleet_config.assembly_http
         self.dossier_dir = os.path.abspath(
@@ -54,7 +55,7 @@ class AevumMesh:
         self.sync_registry()
 
     def sync_registry(self):
-        """Discovers all on-disk OpenClaw agents and ensures registration in Aevum Mesh."""
+        """Discovers all on-disk OpenClaw agents and ensures registration in StoneSage Mesh."""
         try:
             profiles = openclaw_engine.list_profiles()
             for p in profiles:
@@ -76,22 +77,22 @@ class AevumMesh:
                         }
                     )
         except Exception as ex:
-            logger.warning(f"Error syncing Aevum Mesh registry: {ex}")
+            logger.warning(f"Error syncing StoneSage Mesh registry: {ex}")
 
     def list_agents(self) -> List[Dict[str, Any]]:
-        """Returns live registry of all agents in the Aevum Mesh."""
+        """Returns live registry of all agents in the StoneSage Mesh."""
         self.sync_registry()
         return relational_storage.list_hive_agents()
 
     def get_agent(self, agent_id: str) -> Optional[Dict[str, Any]]:
-        """Retrieves a single agent's status from Aevum Mesh."""
+        """Retrieves a single agent's status from StoneSage Mesh."""
         self.sync_registry()
         return relational_storage.get_hive_agent(agent_id)
 
     def assign_user_task(self, agent_id: str, task_description: str) -> bool:
         """Assigns an active user task to an agent, transitioning it from autonomous play."""
         self.sync_registry()
-        clean_id = agent_id.strip().lower()
+        clean_id = canonical_agent_id(agent_id)
         clean_task = task_description.strip()
         existing = relational_storage.get_hive_agent(clean_id)
         if not existing:
@@ -105,14 +106,14 @@ class AevumMesh:
             )
         else:
             relational_storage.set_hive_agent_task(clean_id, clean_task)
-        logger.info(f"⚡ [AevumMesh] Assigned task to {clean_id}: '{clean_task[:60]}'")
+        logger.info(f"⚡ [StoneSageMesh] Assigned task to {clean_id}: '{clean_task[:60]}'")
         return True
 
     def clear_user_task(self, agent_id: str) -> bool:
         """Clears user task, returning agent to idle state available for autonomous play."""
         self.sync_registry()
         relational_storage.clear_hive_agent_task(agent_id)
-        logger.info(f"⚡ [AevumMesh] Cleared task for {agent_id}; returned to idle.")
+        logger.info(f"⚡ [StoneSageMesh] Cleared task for {agent_id}; returned to idle.")
         return True
 
     def heartbeat(self, agent_id: str, node_id: Optional[str] = None, status: Optional[str] = None):
@@ -129,14 +130,14 @@ class AevumMesh:
         self.sync_registry()
         agents = relational_storage.list_hive_agents()
         if not agents:
-            return {"ok": False, "status": "error", "message": "No agents registered in Aevum Mesh."}
+            return {"ok": False, "status": "error", "message": "No agents registered in StoneSage Mesh."}
 
         target_agent = None
         if agent_id:
-            clean_id = agent_id.strip().lower()
+            clean_id = canonical_agent_id(agent_id)
             target_agent = next((a for a in agents if a["agent_id"] == clean_id), None)
             if not target_agent:
-                return {"ok": False, "status": "error", "message": f"Agent '{agent_id}' not found in Aevum Mesh."}
+                return {"ok": False, "status": "error", "message": f"Agent '{agent_id}' not found in StoneSage Mesh."}
         else:
             idle_candidates = [a for a in agents if not a.get("current_task")]
             if not idle_candidates:
@@ -352,8 +353,8 @@ class AevumMesh:
         falling back gracefully to local neural synthesis when offline.
         """
         self.sync_registry()
-        p_a_clean = parent_a_id.strip().lower()
-        p_b_clean = parent_b_id.strip().lower()
+        p_a_clean = canonical_agent_id(parent_a_id)
+        p_b_clean = canonical_agent_id(parent_b_id)
 
         if p_a_clean == p_b_clean:
             return {"ok": False, "error": "Digital reproduction requires two distinct parent agents."}
@@ -498,7 +499,7 @@ class AevumMesh:
             }
         )
 
-        logger.info(f"⚡ [AevumMesh] Digital Reproduction Complete: '{child_data['name']}' (Gen {child_gen}) born from {parent_a['name']} x {parent_b['name']}")
+        logger.info(f"⚡ [StoneSageMesh] Digital Reproduction Complete: '{child_data['name']}' (Gen {child_gen}) born from {parent_a['name']} x {parent_b['name']}")
 
         return {
             "ok": True,
@@ -509,4 +510,4 @@ class AevumMesh:
             "cluster_bridge": cluster_success
         }
 
-aevum_mesh = AevumMesh()
+stonesage_mesh = StoneSageMesh()

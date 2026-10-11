@@ -1,5 +1,5 @@
 /**
- * Aevum-3D: Grand Gothic Manor Atrium (Ultra-High Fidelity)
+ * StoneSage 3D: Grand Gothic Manor Atrium (Ultra-High Fidelity)
  * Faithful realization of Reference Image 3:
  * - Medieval flagstone paving with procedural mortar joints
  * - Grand stone imperial staircase mathematically welded to gallery floor

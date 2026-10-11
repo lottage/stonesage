@@ -1,5 +1,5 @@
 /**
- * Aevum-3D: Multi-Tier Agent Citadel & Physical Kanban Deck
+ * StoneSage 3D: Multi-Tier Agent Citadel & Physical Kanban Deck
  * Master World Engine & Telemetry Loop with High-Fidelity Architectural Environments
  */
 
@@ -124,9 +124,9 @@ export function initCitadel() {
 
     // 11. Start Render Loop
     animate();
-    console.log(`🏛️ Aevum-3D Citadel online [Active Environment: ${currentEnvKey}].`);
+    console.log(`🏛️ StoneSage 3D Citadel online [Active Environment: ${currentEnvKey}].`);
   } catch (err) {
-    console.error('Failed to initialize Aevum Citadel:', err);
+    console.error('Failed to initialize StoneSage Citadel:', err);
     showErrorBanner(err.message || String(err));
   }
 }

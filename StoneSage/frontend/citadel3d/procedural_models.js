@@ -1,5 +1,5 @@
 /**
- * Procedural Low-Poly 3D Models & Worker Archetypes for Aevum Citadel
+ * Procedural Low-Poly 3D Models & Worker Archetypes for StoneSage Citadel
  * Pure Three.js primitives - Zero external asset downloads
  */
 

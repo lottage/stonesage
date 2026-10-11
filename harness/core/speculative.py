@@ -71,7 +71,7 @@ class SpeculativeEngine:
         Invariant:
         - Defaults to ON for interactive user prompts in the CLI.
         - Defaults to OFF (single-model execution) during background automation
-          (Aevum Mesh play, autonomous dossiers, rumination cycles, batch runs),
+          (StoneSage Mesh play, autonomous dossiers, rumination cycles, batch runs),
           freeing the secondary GPU unless explicitly flagged as requiring high speedup.
         """
         if not self.is_enabled:

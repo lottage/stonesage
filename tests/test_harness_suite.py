@@ -1,5 +1,5 @@
 """
-Aevum Unified LLM Harness: Verification & Invariant Test Suite.
+StoneSage Unified LLM Harness: Verification & Invariant Test Suite.
 Deterministically tests all 6 core system guarantees:
   1. A-MEM core-memory immutability vs temporal decay
   2. 70/30 Ground Truth dataset rebalancing & rumination quarantine

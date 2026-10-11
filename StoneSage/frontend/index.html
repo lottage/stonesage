@@ -1692,7 +1692,7 @@
             <span>🏠 HOME ASSISTANT OS &amp; SMART HOME COCKPIT</span>
             <div style="display:flex; gap:6px; align-items:center;">
               <span class="status-badge online" id="ha-connection-badge" style="font-size:0.75rem;">HAOS (ONLINE)</span>
-              <button type="button" class="term-cmd-btn" id="refresh-ha-btn" onclick="fetchHaDashboard(); fetchPresenceState(); fetchGardenState();">[🔄 REFRESH STATES]</button>
+              <button type="button" class="term-cmd-btn" id="refresh-ha-btn" onclick="fetchHaDashboard(); fetchPresenceState(); fetchIrrigationState();">[🔄 REFRESH STATES]</button>
             </div>
           </div>
 
@@ -1754,14 +1754,14 @@
             <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; border-bottom:1px solid var(--term-border-dim); padding-bottom:6px; margin-bottom:8px;">
               <span style="font-weight:bold; color:var(--term-accent-blue); font-size:0.9rem;">🌻 4-ZONE LANDSCAPE &amp; SMART IRRIGATION COCKPIT</span>
               <div style="display:flex; gap:6px; align-items:center;">
-                <span id="garden-battery-badge" class="status-badge" style="font-size:0.72rem;">🔋 Battery: --%</span>
-                <button type="button" class="preset-btn" id="garden-rain-delay-btn" onclick="toggleRainDelay()">[☀️ RAIN DELAY: OFF]</button>
+                <span id="irrigation-battery-badge" class="status-badge" style="font-size:0.72rem;">🔋 Battery: --%</span>
+                <button type="button" class="preset-btn" id="irrigation-rain-delay-btn" onclick="toggleRainDelay()">[☀️ RAIN DELAY: OFF]</button>
                 <button type="button" class="term-cmd-btn" onclick="emergencyCloseAll()" style="color:var(--term-accent-red); font-weight:bold;">[🛑 EMERGENCY SHUTOFF ALL]</button>
               </div>
             </div>
 
             <!-- 4 Zones Grid -->
-            <div id="garden-zones-grid" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:10px;">
+            <div id="irrigation-zones-grid" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:10px;">
               <div style="color:var(--term-text-muted); font-size:0.75rem;">Loading irrigation valves...</div>
             </div>
           </div>

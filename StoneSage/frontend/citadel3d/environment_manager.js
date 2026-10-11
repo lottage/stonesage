@@ -1,5 +1,5 @@
 /**
- * Aevum-3D: Master Environment Manager
+ * StoneSage 3D: Master Environment Manager
  * Coordinates real-time loading, lighting transitions, camera framing,
  * agent architectural placement, and Kanban positioning across the 5 micro-worlds.
  */

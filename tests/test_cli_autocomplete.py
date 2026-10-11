@@ -79,7 +79,7 @@ class TestCLIAutocomplete(unittest.TestCase):
         doc = Document("/agent select ")
         completions = list(self.completer.get_completions(doc, None))
         cmd_names = [c.text for c in completions]
-        self.assertIn("aevum", cmd_names)
+        self.assertIn("atlas", cmd_names)
 
     def test_agent_shell_list_and_select(self):
         """Verify AgentShell list_agents and select_agent functions without error."""
@@ -88,13 +88,13 @@ class TestCLIAutocomplete(unittest.TestCase):
 
         profiles = openclaw_engine.list_profiles()
         self.assertTrue(len(profiles) >= 1)
-        self.assertTrue(any(p["agent_id"] == "aevum" for p in profiles))
+        self.assertTrue(any(p["agent_id"] == "atlas" for p in profiles))
 
-        # Select aevum
-        AgentShell.select_agent(["aevum"])
+        # Select atlas
+        AgentShell.select_agent(["atlas"])
         self.assertIsNotNone(AgentShell.active_agent)
-        self.assertEqual(AgentShell.active_agent["agent_id"], "aevum")
-        self.assertEqual(AgentShell.active_agent["name"], "Aevum")
+        self.assertEqual(AgentShell.active_agent["agent_id"], "atlas")
+        self.assertEqual(AgentShell.active_agent["name"], "Atlas")
 
 
 if __name__ == "__main__":

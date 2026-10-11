@@ -23,7 +23,8 @@ from rich.prompt import Prompt
 from ..config import fleet_config
 from ..core.node_scheduler import node_scheduler
 from ..core.openclaw_engine import openclaw_engine
-from ..core.aevum_mesh import aevum_mesh
+from ..core.stonesage_mesh import stonesage_mesh
+from ..legacy_names import canonical_agent_id
 from ..data_fabric.pg_storage import relational_storage
 
 console = Console()
@@ -81,7 +82,7 @@ class AgentShell:
     def print_help(cls):
         active_label = f" (Active: [bold green]{cls.active_agent['name']}[/bold green])" if cls.active_agent else ""
         console.print(Panel(
-            f"[bold cyan][*] Aevum Mesh & OpenClaw Agent Management Sub-Shell{active_label}[/bold cyan]\n\n"
+            f"[bold cyan][*] StoneSage Mesh & OpenClaw Agent Management Sub-Shell{active_label}[/bold cyan]\n\n"
             "[bold green]/agent list[/bold green]                  - List all registered agents, assigned nodes, tasks & status\n"
             "[bold green]/agent select <id>[/bold green]             - Attach to a specific agent's stream\n"
             "[bold green]/agent detach[/bold green]                  - Detach from active agent & revert to blank direct model\n"
@@ -141,7 +142,7 @@ class AgentShell:
             return
         aid = args[0].strip().lower()
         task_desc = " ".join(args[1:]).strip()
-        success = aevum_mesh.assign_user_task(aid, task_desc)
+        success = stonesage_mesh.assign_user_task(aid, task_desc)
         if success:
             console.print(f"[bold green][OK] Assigned task to agent '{aid}':[/bold green] [white]{task_desc}[/white]")
         else:
@@ -157,7 +158,7 @@ class AgentShell:
                 return
         else:
             aid = args[0].strip().lower()
-        success = aevum_mesh.clear_user_task(aid)
+        success = stonesage_mesh.clear_user_task(aid)
         if success:
             console.print(f"[bold green][OK] Cleared active task for agent '{aid}'. Agent returned to idle state.[/bold green]")
         else:
@@ -174,7 +175,7 @@ class AgentShell:
         elif cls.active_agent:
             aid = cls.active_agent["agent_id"]
 
-        result = aevum_mesh.trigger_autonomous_play(agent_id=aid, mode=mode)
+        result = stonesage_mesh.trigger_autonomous_play(agent_id=aid, mode=mode)
         if result.get("status") == "blocked":
             console.print(f"[bold yellow][BLOCKED] {result.get('message')}[/bold yellow]")
         elif result.get("status") == "dispatched":
@@ -184,7 +185,7 @@ class AgentShell:
                 f"[white]• Topic:[/white] [bold yellow]{result.get('topic')}[/bold yellow]\n"
                 f"[white]• Target:[/white] [magenta]{result.get('target')}[/magenta]\n"
                 f"[white]• Details:[/white] [dim]{result.get('message')}[/dim]",
-                title="Aevum Mesh - Autonomous Activity",
+                title="StoneSage Mesh - Autonomous Activity",
                 border_style="cyan"
             ))
         else:
@@ -194,7 +195,7 @@ class AgentShell:
     def list_agents(cls):
         from ..core.founders import get_all_founders
         founders = get_all_founders()
-        mesh_agents = aevum_mesh.list_agents()
+        mesh_agents = stonesage_mesh.list_agents()
 
         active_id = cls.active_agent.get("agent_id") if cls.active_agent else None
 
@@ -204,7 +205,7 @@ class AgentShell:
         for f in founders:
             if f.id not in seen_ids:
                 seen_ids.add(f.id)
-                assigned = "node1_primary" if f.id in ("aule", "aevum") else "node1_secondary"
+                assigned = "node1_primary" if f.id in ("aule", "atlas") else "node1_secondary"
                 unified_agents.append({
                     "agent_id": f.id,
                     "name": f.name,
@@ -222,7 +223,7 @@ class AgentShell:
             console.print("[yellow]No registered agents found. Type '/agent build' to create one.[/yellow]")
             return
 
-        table = Table(title="[*] Aevum Mesh - Sovereign Agent Registry & Valar Pantheon", border_style="cyan")
+        table = Table(title="[*] StoneSage Mesh - Sovereign Agent Registry & Valar Pantheon", border_style="cyan")
         table.add_column("Agent ID", style="bold green")
         table.add_column("Display Name", style="cyan")
         table.add_column("Assigned Node", style="magenta")
@@ -300,7 +301,7 @@ class AgentShell:
                 return
             target_id = Prompt.ask("[bold green]Select Agent ID[/bold green]", choices=available_ids, default=available_ids[0])
         else:
-            target_id = args[0].strip().lower()
+            target_id = canonical_agent_id(args[0])
 
         # Load profile from disk or session or Founder registry
         profile = openclaw_engine.get_profile(target_id)
@@ -311,7 +312,7 @@ class AgentShell:
                     "agent_id": founder.id,
                     "name": founder.name,
                     "role": founder.title,
-                    "assigned_node": "node1_primary" if founder.id in ("aule", "aevum") else "node1_secondary",
+                    "assigned_node": "node1_primary" if founder.id in ("aule", "atlas") else "node1_secondary",
                     "autonomy_level": "tiered",
                     "is_founder": True
                 }

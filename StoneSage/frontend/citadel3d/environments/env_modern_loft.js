@@ -1,5 +1,5 @@
 /**
- * Aevum-3D: Modern Split-Level Architect Loft (Ultra-High Fidelity)
+ * StoneSage 3D: Modern Split-Level Architect Loft (Ultra-High Fidelity)
  * Faithful realization of Reference Image 2:
  * - Crisp architectural cutaway walls with clean white finish and dark columns
  * - Floating open-riser timber staircase with matte black stringers and vertical wire balusters

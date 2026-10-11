@@ -1,5 +1,5 @@
 """
-Interactive Autocomplete & Dropdown Menu Completer for Aevum CLI.
+Interactive Autocomplete & Dropdown Menu Completer for StoneSage CLI.
 Provides real-time narrowing popup menus, subcommands, arrow-key navigation,
 and Tab-completion via prompt_toolkit with graceful standard fallback.
 """
@@ -117,7 +117,7 @@ class HarnessCompleter(Completer if PROMPT_TOOLKIT_AVAILABLE else object):
             }
         },
         "/mesh": {
-            "desc": "Aevum Mesh: Sovereign Agent Hive Network",
+            "desc": "StoneSage Mesh: Sovereign Agent Hive Network",
             "sub": {
                 "status": "List all agents, assigned nodes, and user tasks",
                 "play": "Dispatch autonomous play turn (Agora chatboard or dossier)",

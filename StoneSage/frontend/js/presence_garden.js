@@ -1,5 +1,5 @@
 /**
- * StoneSage Real Presence, Courage Computer Voice & Landscape Garden Cockpit.
+ * StoneSage Real Presence, Courage Computer Voice & Irrigation Cockpit.
  * Connects to /api/presence/* and /api/garden/* endpoints.
  */
 
@@ -636,34 +636,34 @@ export async function askCourage(query) {
   }
 }
 
-export async function fetchGardenState() {
+export async function fetchIrrigationState() {
   try {
     const res = await fetch('/api/garden/status');
     const json = await res.json();
     if (!json.ok) return null;
-    renderGarden(json.data);
+    renderIrrigation(json.data);
     return json.data;
   } catch (e) {
-    console.warn('Garden fetch failed:', e);
+    console.warn('Irrigation fetch failed:', e);
     return null;
   }
 }
 
-export function renderGarden(data) {
+export function renderIrrigation(data) {
   if (!data) return;
 
   // Battery and rain delay badges
-  const battEl = document.getElementById('garden-battery-badge');
+  const battEl = document.getElementById('irrigation-battery-badge');
   if (battEl) battEl.innerText = `🔋 Battery: ${data.battery_level}%`;
 
-  const rainBtn = document.getElementById('garden-rain-delay-btn');
+  const rainBtn = document.getElementById('irrigation-rain-delay-btn');
   if (rainBtn) {
     rainBtn.innerText = data.rain_delay_active ? '[🌧️ RAIN DELAY: ACTIVE]' : '[☀️ RAIN DELAY: OFF]';
     rainBtn.style.color = data.rain_delay_active ? '#38bdf8' : 'var(--term-text-bright)';
   }
 
   // Render 4 Zones
-  const zonesGrid = document.getElementById('garden-zones-grid');
+  const zonesGrid = document.getElementById('irrigation-zones-grid');
   if (zonesGrid && data.zones) {
     let html = '';
     for (const [key, z] of Object.entries(data.zones)) {
@@ -683,10 +683,10 @@ export function renderGarden(data) {
             Last: ${z.last_watered ? z.last_watered.replace('T', ' ').substring(0, 16) : 'None'}
           </div>
           <div style="display:flex; gap:6px;">
-            <button type="button" class="term-cmd-btn" style="flex:1; background:var(--term-accent-blue); color:#fff; font-weight:bold;" onclick="window.controlGardenZone('${key}', 'open', 15)">
+            <button type="button" class="term-cmd-btn" style="flex:1; background:var(--term-accent-blue); color:#fff; font-weight:bold;" onclick="window.controlIrrigationZone('${key}', 'open', 15)">
               [OPEN 15m]
             </button>
-            <button type="button" class="term-cmd-btn" style="color:var(--term-accent-red); font-weight:bold;" onclick="window.controlGardenZone('${key}', 'close')">
+            <button type="button" class="term-cmd-btn" style="color:var(--term-accent-red); font-weight:bold;" onclick="window.controlIrrigationZone('${key}', 'close')">
               [CLOSE]
             </button>
           </div>
@@ -697,7 +697,7 @@ export function renderGarden(data) {
   }
 }
 
-export async function controlGardenZone(zone, action, durationMinutes = 15) {
+export async function controlIrrigationZone(zone, action, durationMinutes = 15) {
   try {
     const res = await fetch('/api/garden/zone/control', {
       method: 'POST',
@@ -706,7 +706,7 @@ export async function controlGardenZone(zone, action, durationMinutes = 15) {
     });
     const json = await res.json();
     if (json.ok) {
-      fetchGardenState();
+      fetchIrrigationState();
     } else {
       alert(`Zone command error: ${json.error || 'Failed'}`);
     }
@@ -717,7 +717,7 @@ export async function controlGardenZone(zone, action, durationMinutes = 15) {
 
 export async function toggleRainDelay() {
   try {
-    const cur = document.getElementById('garden-rain-delay-btn')?.innerText.includes('ACTIVE');
+    const cur = document.getElementById('irrigation-rain-delay-btn')?.innerText.includes('ACTIVE');
     const res = await fetch('/api/garden/rain_delay', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -725,7 +725,7 @@ export async function toggleRainDelay() {
     });
     const json = await res.json();
     if (json.ok) {
-      fetchGardenState();
+      fetchIrrigationState();
     }
   } catch (e) {
     console.error('Rain delay error:', e);
@@ -737,7 +737,7 @@ export async function emergencyCloseAll() {
     const res = await fetch('/api/garden/close_all', { method: 'POST' });
     const json = await res.json();
     if (json.ok) {
-      fetchGardenState();
+      fetchIrrigationState();
     }
   } catch (e) {
     console.error('Emergency close error:', e);
@@ -746,9 +746,9 @@ export async function emergencyCloseAll() {
 
 // Bind to window for HTML onclick handlers
 window.askCourage = askCourage;
-window.controlGardenZone = controlGardenZone;
+window.controlIrrigationZone = controlIrrigationZone;
 window.toggleRainDelay = toggleRainDelay;
 window.emergencyCloseAll = emergencyCloseAll;
 window.fetchPresenceState = fetchPresenceState;
-window.fetchGardenState = fetchGardenState;
+window.fetchIrrigationState = fetchIrrigationState;
 window.showPresenceTab = showPresenceTab;

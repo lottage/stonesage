@@ -1,5 +1,5 @@
 /**
- * Aevum-3D: Physical Kanban Deck
+ * StoneSage 3D: Physical Kanban Deck
  * Suspended cable tracks, clothes-pin clips, and canvas-rendered task cards
  */
 

@@ -1,5 +1,5 @@
 /**
- * Aevum-3D: Cyberpunk Neon Workshop / Hacker Den (Ultra-High Fidelity)
+ * StoneSage 3D: Cyberpunk Neon Workshop / Hacker Den (Ultra-High Fidelity)
  * Faithful realization of Reference Image 5:
  * - Multi-tier vertical electronics lab with industrial catwalk
  * - Procedural cyber metal wall panels with ventilation louvers & circuit traces

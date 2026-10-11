@@ -22,13 +22,13 @@ class TestConsensusEngine(unittest.TestCase):
         """Verify consensus plan maps default agents, lead founder, and endpoints."""
         plan = self.engine.build_plan(
             prompt="Implement an atomic lock-free queue in Python",
-            agent_ids=["aevum", "sentinel"],
+            agent_ids=["atlas", "sentinel"],
             domain="software"
         )
         self.assertEqual(plan.task_prompt, "Implement an atomic lock-free queue in Python")
         self.assertEqual(plan.lead_founder_id, "aule")
         self.assertEqual(len(plan.agents), 2)
-        self.assertEqual(plan.agents[0]["agent_id"], "aevum")
+        self.assertEqual(plan.agents[0]["agent_id"], "atlas")
         self.assertEqual(plan.agents[1]["agent_id"], "sentinel")
 
     @patch("harness.core.llama_client.LlamaClient.chat_stream")
@@ -48,7 +48,7 @@ class TestConsensusEngine(unittest.TestCase):
 
         plan = self.engine.build_plan(
             prompt="Analyze race conditions in shared memory ring buffer",
-            agent_ids=["aevum", "sentinel"],
+            agent_ids=["atlas", "sentinel"],
             domain="software"
         )
 
@@ -63,14 +63,14 @@ class TestConsensusEngine(unittest.TestCase):
         self.assertEqual(result.lead_founder_id, "aule")
 
         # Stage 1 assertions
-        self.assertIn("aevum", result.initial_solutions)
+        self.assertIn("atlas", result.initial_solutions)
         self.assertIn("sentinel", result.initial_solutions)
-        self.assertIn("Draft solution", result.initial_solutions["aevum"])
+        self.assertIn("Draft solution", result.initial_solutions["atlas"])
 
         # Stage 2 assertions (bilateral critique)
-        self.assertIn("aevum", result.peer_critiques)
-        self.assertIn("sentinel", result.peer_critiques["aevum"])
-        self.assertIn("Needs lock verification", result.peer_critiques["aevum"]["sentinel"])
+        self.assertIn("atlas", result.peer_critiques)
+        self.assertIn("sentinel", result.peer_critiques["atlas"])
+        self.assertIn("Needs lock verification", result.peer_critiques["atlas"]["sentinel"])
 
         # Stage 3 assertions (Founder synthesis)
         self.assertIn("Verified Consensus Solution", result.final_synthesis)

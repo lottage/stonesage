@@ -1,5 +1,5 @@
 /**
- * Aevum-3D: Botanical Greenhouse Loft (Ultra-High Fidelity)
+ * StoneSage 3D: Botanical Greenhouse Loft (Ultra-High Fidelity)
  * Faithful realization of Reference Image 1:
  * - True herringbone parquet flooring via procedural canvas texture
  * - Mathematically exact stairs connecting sunken lounge, mid-terrace & upper loft

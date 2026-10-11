@@ -1,5 +1,5 @@
 /**
- * Aevum-3D: Touch-Friendly Agent Inspector HUD
+ * StoneSage 3D: Touch-Friendly Agent Inspector HUD
  * Real-time reasoning stream, task queue management, Whisper STT & Kokoro TTS integration
  */
 

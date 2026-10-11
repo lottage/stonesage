@@ -16,6 +16,7 @@ from .llama_client import LlamaClient, StreamChunk
 from .context_fabric import context_fabric
 from .founders import get_founder, FOUNDERS
 from ..config import fleet_config
+from ..legacy_names import canonical_agent_id
 
 logger = logging.getLogger("Harness.ConsensusEngine")
 
@@ -57,9 +58,9 @@ class ConsensusEngine:
     ) -> ConsensusPlan:
         """Constructs an executable multi-agent consensus plan."""
         if not agent_ids:
-            agent_ids = ["aevum", "sentinel"]
+            agent_ids = ["atlas", "sentinel"]
 
-        founder = get_founder(domain) or FOUNDERS["aevum"]
+        founder = get_founder(domain) or FOUNDERS["atlas"]
         agent_configs = []
 
         # Map available fleet nodes to agents
@@ -68,7 +69,7 @@ class ConsensusEngine:
             node_key = nodes[idx % len(nodes)]
             node_obj = fleet_config.nodes[node_key]
             agent_configs.append({
-                "agent_id": aid,
+                "agent_id": canonical_agent_id(aid),
                 "node_id": node_key,
                 "endpoint_url": node_obj.base_url,
                 "model_name": "local-model"
@@ -191,7 +192,7 @@ class ConsensusEngine:
         # -------------------------------------------------------------
         report("stage_start", {"stage": 3, "title": f"Founder Adjudication & Synthesis ({plan.lead_founder_id.title()})"})
 
-        founder = get_founder(plan.lead_founder_id) or FOUNDERS["aevum"]
+        founder = get_founder(plan.lead_founder_id) or FOUNDERS["atlas"]
         # Use primary coordinator node for Founder adjudication
         lead_node = fleet_config.nodes.get("node1_primary")
         lead_url = lead_node.base_url if lead_node else plan.agents[0]["endpoint_url"]

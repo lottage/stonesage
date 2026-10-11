@@ -11,6 +11,7 @@ import sqlite3
 import logging
 from typing import Dict, Any, List, Optional
 from ..config import fleet_config
+from ..legacy_names import LEGACY_AGENT_IDS, LEGACY_AGENT_NAMES, LEGACY_TABLES, canonical_agent_id
 
 logger = logging.getLogger("Harness.PGStorage")
 
@@ -23,10 +24,40 @@ class RelationalStorage:
         self.conn = None
         self._init_sqlite()
 
+    def _migrate_legacy_names(self):
+        """Databases written before the product and one agent were renamed: rename the registry tables, then re-key the agents."""
+        have = {r[0] for r in self.conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+        with self.conn:
+            for old, new in LEGACY_TABLES.items():
+                if old in have and new not in have:
+                    self.conn.execute(f"ALTER TABLE {old} RENAME TO {new}")
+                    have.discard(old)
+                    have.add(new)
+            if "stonesage_agent_registry" in have:
+                for old, new in LEGACY_AGENT_IDS.items():
+                    for (aid,) in self.conn.execute("SELECT agent_id FROM stonesage_agent_registry WHERE agent_id = ? OR agent_id LIKE ?",
+                                                    (old, old + "-%")).fetchall():
+                        new_id = canonical_agent_id(aid)
+                        if not self.conn.execute("SELECT 1 FROM stonesage_agent_registry WHERE agent_id = ?", (new_id,)).fetchone():
+                            self.conn.execute("UPDATE stonesage_agent_registry SET agent_id = ? WHERE agent_id = ?", (new_id, aid))
+                for old, new in LEGACY_AGENT_NAMES.items():
+                    self.conn.execute("UPDATE stonesage_agent_registry SET name = ? || substr(name, ?) WHERE name = ? OR name LIKE ?",
+                                      (new, len(old) + 1, old, old + "-%"))
+            if "agent_sessions" in have:
+                for old, new in LEGACY_AGENT_IDS.items():
+                    self.conn.execute("UPDATE agent_sessions SET agent_id = ? || substr(agent_id, ?) WHERE agent_id = ? OR agent_id LIKE ?",
+                                      (new, len(old) + 1, old, old + "-%"))
+            if "stonesage_project_registry" in have:
+                for aid, in self.conn.execute("SELECT DISTINCT bound_agent_id FROM stonesage_project_registry WHERE bound_agent_id IS NOT NULL").fetchall():
+                    if canonical_agent_id(aid) != aid:
+                        self.conn.execute("UPDATE stonesage_project_registry SET bound_agent_id = ? WHERE bound_agent_id = ?",
+                                          (canonical_agent_id(aid), aid))
+
     def _init_sqlite(self):
         """Initializes SQLite tables with WAL mode for fast concurrent reads."""
         self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
         self.conn.execute("PRAGMA journal_mode=WAL;")
+        self._migrate_legacy_names()
         with self.conn:
             self.conn.execute("""
                 CREATE TABLE IF NOT EXISTS agent_sessions (
@@ -64,7 +95,7 @@ class RelationalStorage:
                 )
             """)
             self.conn.execute("""
-                CREATE TABLE IF NOT EXISTS aevum_agent_registry (
+                CREATE TABLE IF NOT EXISTS stonesage_agent_registry (
                     agent_id TEXT PRIMARY KEY,
                     name TEXT NOT NULL,
                     role TEXT NOT NULL,
@@ -79,7 +110,7 @@ class RelationalStorage:
                 )
             """)
             self.conn.execute("""
-                CREATE TABLE IF NOT EXISTS aevum_project_registry (
+                CREATE TABLE IF NOT EXISTS stonesage_project_registry (
                     project_id TEXT PRIMARY KEY,
                     name TEXT NOT NULL,
                     path TEXT NOT NULL,
@@ -286,7 +317,7 @@ class RelationalStorage:
         return True
 
 
-    # ── Aevum Hive Network Agent Registry ─────────────────────────────
+    # ── StoneSage Hive Network Agent Registry ─────────────────────────────
 
     def upsert_hive_agent(
         self,
@@ -299,13 +330,13 @@ class RelationalStorage:
         autonomous_focus: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        """Registers or updates an agent in the Aevum Hive Network registry."""
+        """Registers or updates an agent in the StoneSage Hive Network registry."""
         now = time.time()
         meta_str = json.dumps(metadata or {})
-        clean_id = agent_id.strip().lower()
+        clean_id = canonical_agent_id(agent_id)
         with self.conn:
             self.conn.execute("""
-                INSERT INTO aevum_agent_registry (
+                INSERT INTO stonesage_agent_registry (
                     agent_id, name, role, assigned_node, status, current_task,
                     last_heartbeat_hive, autonomous_focus, metadata_json, created_at, updated_at
                 )
@@ -315,22 +346,22 @@ class RelationalStorage:
                     role=excluded.role,
                     assigned_node=excluded.assigned_node,
                     status=excluded.status,
-                    current_task=COALESCE(excluded.current_task, aevum_agent_registry.current_task),
+                    current_task=COALESCE(excluded.current_task, stonesage_agent_registry.current_task),
                     last_heartbeat_hive=excluded.last_heartbeat_hive,
-                    autonomous_focus=COALESCE(excluded.autonomous_focus, aevum_agent_registry.autonomous_focus),
+                    autonomous_focus=COALESCE(excluded.autonomous_focus, stonesage_agent_registry.autonomous_focus),
                     metadata_json=excluded.metadata_json,
                     updated_at=excluded.updated_at
             """, (clean_id, name, role, assigned_node, status, current_task, now, autonomous_focus, meta_str, now, now))
         return self.get_hive_agent(clean_id)
 
     def get_hive_agent(self, agent_id: str) -> Optional[Dict[str, Any]]:
-        """Fetches agent details from Aevum Hive registry."""
-        clean_id = agent_id.strip().lower()
+        """Fetches agent details from StoneSage Hive registry."""
+        clean_id = canonical_agent_id(agent_id)
         cur = self.conn.cursor()
         cur.execute("""
             SELECT agent_id, name, role, assigned_node, status, current_task,
                    last_heartbeat_hive, autonomous_focus, metadata_json, created_at, updated_at
-            FROM aevum_agent_registry
+            FROM stonesage_agent_registry
             WHERE agent_id = ?
         """, (clean_id,))
         row = cur.fetchone()
@@ -351,12 +382,12 @@ class RelationalStorage:
         }
 
     def list_hive_agents(self) -> List[Dict[str, Any]]:
-        """Lists all agents registered in the Aevum Hive Network."""
+        """Lists all agents registered in the StoneSage Hive Network."""
         cur = self.conn.cursor()
         cur.execute("""
             SELECT agent_id, name, role, assigned_node, status, current_task,
                    last_heartbeat_hive, autonomous_focus, metadata_json, created_at, updated_at
-            FROM aevum_agent_registry
+            FROM stonesage_agent_registry
             ORDER BY updated_at DESC
         """)
         rows = cur.fetchall()
@@ -384,8 +415,8 @@ class RelationalStorage:
         status: Optional[str] = None,
         autonomous_focus: Optional[str] = None,
     ) -> bool:
-        """Pings heartbeat and updates runtime activity in Aevum Hive."""
-        clean_id = agent_id.strip().lower()
+        """Pings heartbeat and updates runtime activity in StoneSage Hive."""
+        clean_id = canonical_agent_id(agent_id)
         now = time.time()
         with self.conn:
             updates = ["last_heartbeat_hive = ?", "updated_at = ?"]
@@ -400,32 +431,32 @@ class RelationalStorage:
                 updates.append("autonomous_focus = ?")
                 params.append(autonomous_focus)
             params.append(clean_id)
-            self.conn.execute(f"UPDATE aevum_agent_registry SET {', '.join(updates)} WHERE agent_id = ?", tuple(params))
+            self.conn.execute(f"UPDATE stonesage_agent_registry SET {', '.join(updates)} WHERE agent_id = ?", tuple(params))
         return True
 
     def set_hive_agent_task(self, agent_id: str, task: str) -> bool:
-        """Assigns an active user directive to an agent in Aevum Hive."""
-        clean_id = agent_id.strip().lower()
+        """Assigns an active user directive to an agent in StoneSage Hive."""
+        clean_id = canonical_agent_id(agent_id)
         now = time.time()
         with self.conn:
             self.conn.execute("""
-                UPDATE aevum_agent_registry
+                UPDATE stonesage_agent_registry
                 SET current_task = ?, status = 'user_active', updated_at = ?, last_heartbeat_hive = ?
                 WHERE agent_id = ?
             """, (task, now, now, clean_id))
         return True
 
     def clear_hive_agent_task(self, agent_id: str) -> bool:
-        """Clears user task, returning agent to idle / autonomous play in Aevum Hive."""
-        clean_id = agent_id.strip().lower()
+        """Clears user task, returning agent to idle / autonomous play in StoneSage Hive."""
+        clean_id = canonical_agent_id(agent_id)
         now = time.time()
         with self.conn:
             self.conn.execute("""
-                UPDATE aevum_agent_registry
+                UPDATE stonesage_agent_registry
                 SET current_task = NULL, status = 'idle', updated_at = ?, last_heartbeat_hive = ?
                 WHERE agent_id = ?
             """, (now, now, clean_id))
-    # ── Aevum Cross-Endpoint Project Registry ────────────────────────
+    # ── StoneSage Cross-Endpoint Project Registry ────────────────────────
 
     def upsert_project(
         self,
@@ -444,7 +475,7 @@ class RelationalStorage:
         norm_path = os.path.normpath(path).replace("\\", "/") if path else ""
         with self.conn:
             self.conn.execute("""
-                INSERT INTO aevum_project_registry (
+                INSERT INTO stonesage_project_registry (
                     project_id, name, path, node_id, bound_agent_id, status, metadata_json, created_at, updated_at
                 )
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -452,7 +483,7 @@ class RelationalStorage:
                     name=excluded.name,
                     path=excluded.path,
                     node_id=excluded.node_id,
-                    bound_agent_id=COALESCE(excluded.bound_agent_id, aevum_project_registry.bound_agent_id),
+                    bound_agent_id=COALESCE(excluded.bound_agent_id, stonesage_project_registry.bound_agent_id),
                     status=excluded.status,
                     metadata_json=excluded.metadata_json,
                     updated_at=excluded.updated_at
@@ -468,7 +499,7 @@ class RelationalStorage:
         cur = self.conn.cursor()
         cur.execute("""
             SELECT project_id, name, path, node_id, bound_agent_id, status, metadata_json, created_at, updated_at
-            FROM aevum_project_registry
+            FROM stonesage_project_registry
             WHERE project_id = ? OR LOWER(name) = ? OR path = ?
         """, (clean_id, clean_id, norm_path))
         row = cur.fetchone()
@@ -491,7 +522,7 @@ class RelationalStorage:
         cur = self.conn.cursor()
         cur.execute("""
             SELECT project_id, name, path, node_id, bound_agent_id, status, metadata_json, created_at, updated_at
-            FROM aevum_project_registry
+            FROM stonesage_project_registry
             ORDER BY updated_at DESC
         """)
         rows = cur.fetchall()
@@ -514,17 +545,17 @@ class RelationalStorage:
         """Removes a project from the registry."""
         clean_id = project_id.strip().lower()
         with self.conn:
-            self.conn.execute("DELETE FROM aevum_project_registry WHERE project_id = ?", (clean_id,))
+            self.conn.execute("DELETE FROM stonesage_project_registry WHERE project_id = ?", (clean_id,))
         return True
 
     def bind_agent_to_project(self, project_id: str, agent_id: str) -> bool:
         """Binds an agent to a project in the registry."""
         clean_proj = project_id.strip().lower()
-        clean_agent = agent_id.strip().lower()
+        clean_agent = canonical_agent_id(agent_id)
         now = time.time()
         with self.conn:
             self.conn.execute("""
-                UPDATE aevum_project_registry
+                UPDATE stonesage_project_registry
                 SET bound_agent_id = ?, updated_at = ?
                 WHERE project_id = ?
             """, (clean_agent, now, clean_proj))

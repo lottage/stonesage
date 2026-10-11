@@ -95,18 +95,18 @@ class TestContextFabric(unittest.TestCase):
         self.assertIn("thermostat", prompt)
 
     def test_agent_persona_injection(self):
-        """Active agent 'aevum' receives its specialized persona and Direct Answer Mode."""
-        prompt = context_fabric.compile_dynamic_turn("how should we structure this module?", agent_id="aevum")
-        self.assertIn("Aevum", prompt)
+        """Active agent 'atlas' receives its specialized persona and Direct Answer Mode."""
+        prompt = context_fabric.compile_dynamic_turn("how should we structure this module?", agent_id="atlas")
+        self.assertIn("Atlas", prompt)
         self.assertIn("Manager of Coding Department", prompt)
         self.assertIn("Direct Answer Mode", prompt)
         # Routine query should still not leak hardware IPs
         self.assertNotIn(PVE_IP, prompt)
 
     def test_agent_with_database_query(self):
-        """Agent 'aevum' asking about databases gets its persona + the database atom."""
-        prompt = context_fabric.compile_dynamic_turn("which database stores our vector embeddings?", agent_id="aevum")
-        self.assertIn("Aevum", prompt)
+        """Agent 'atlas' asking about databases gets its persona + the database atom."""
+        prompt = context_fabric.compile_dynamic_turn("which database stores our vector embeddings?", agent_id="atlas")
+        self.assertIn("Atlas", prompt)
         self.assertIn("Manager of Coding Department", prompt)
         self.assertIn("Qdrant Vector DB", prompt)
         self.assertIn(fleet_config.qdrant_url, prompt)
@@ -134,8 +134,8 @@ class TestContextFabric(unittest.TestCase):
 
     def test_full_dossier(self):
         """Full dossier compilation contains comprehensive cluster specification."""
-        dossier = context_fabric.compile_full_dossier(agent_id="aevum")
-        self.assertIn("Aevum", dossier)
+        dossier = context_fabric.compile_full_dossier(agent_id="atlas")
+        self.assertIn("Atlas", dossier)
         self.assertIn("CLUSTER SILICON & TOPOLOGY", dossier)
         self.assertIn("DATA FABRIC & MEMORY", dossier)
         self.assertIn("COGNITIVE HIERARCHY & PHILOSOPHICAL FOUNDATION", dossier)

@@ -8,7 +8,7 @@ import { initChat } from './chat.js';
 import { initTerminal } from './terminal.js';
 import { initHarness } from './harness.js';
 import { initFleet } from './fleet.js';
-import { fetchPresenceState, fetchGardenState } from './presence_garden.js';
+import { fetchPresenceState, fetchIrrigationState } from './presence_garden.js';
 import { fetchAgentDnaList } from './agent_dna.js';
 import { initWorkstationAce } from './workstation_ace.js';
 import { initEngineStudio } from './engine_studio.js';
@@ -193,10 +193,10 @@ function bootstrapApp() {
   // 6b. Initialize Real Presence, Courage Computer & Landscape Cockpit
   try {
     fetchPresenceState();
-    fetchGardenState();
+    fetchIrrigationState();
     fetchAgentDnaList();
   } catch (err) {
-    console.error('Failed init presence/garden/agentdna:', err);
+    console.error('Failed init presence/irrigation/agentdna:', err);
   }
 
   // 6c. Initialize Workstation Ace Editor, Engine Studio & Engine Console

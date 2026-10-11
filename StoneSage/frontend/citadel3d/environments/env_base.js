@@ -1,5 +1,5 @@
 /**
- * Aevum-3D: Architectural Primitive & High-Fidelity Prop Library
+ * StoneSage 3D: Architectural Primitive & High-Fidelity Prop Library
  * Mathematically exact parametric staircases, multi-pane window casings,
  * architectural moldings, cushioned seating, catenary drooping cables, and layered flora.
  */

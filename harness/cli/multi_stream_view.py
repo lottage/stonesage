@@ -32,7 +32,7 @@ from rich.prompt import Prompt
 from ..config import fleet_config
 from ..core.llama_client import LlamaClient
 from ..core.context_fabric import context_fabric
-from ..core.aevum_mesh import aevum_mesh
+from ..core.stonesage_mesh import stonesage_mesh
 from ..core.openclaw_engine import openclaw_engine
 
 logger = logging.getLogger("harness.cli.multi_stream")
@@ -191,7 +191,7 @@ class MultiStreamTUI:
                 row_slice.append(Text(""))
             table.add_row(*row_slice)
 
-        header_title = f"[bold cyan][AEVUM CLUSTER // CONCURRENT AGENT STREAMS][/bold cyan] - [dim]{self.task_title[:45]}[/dim]"
+        header_title = f"[bold cyan][STONESAGE CLUSTER // CONCURRENT AGENT STREAMS][/bold cyan] - [dim]{self.task_title[:45]}[/dim]"
         return Panel(table, title=header_title, border_style="blue")
 
 
@@ -201,7 +201,7 @@ def interactive_stream_wizard(prompt_arg: Optional[str] = None) -> Optional[Dict
     Allows full operator control over task prompt, agents, compute nodes, and models.
     """
     console.print(Panel(
-        "[bold cyan]⚡ AEVUM MULTI-STREAM CONCURRENT ORCHESTRATOR WIZARD[/bold cyan]\n"
+        "[bold cyan]⚡ STONESAGE MULTI-STREAM CONCURRENT ORCHESTRATOR WIZARD[/bold cyan]\n"
         "[dim]Full operator control: select task prompt, participating agents, and compute node endpoints.[/dim]",
         border_style="cyan"
     ))
@@ -250,7 +250,7 @@ def interactive_stream_wizard(prompt_arg: Optional[str] = None) -> Optional[Dict
     console.print(node_table)
 
     # 4. Discover Available Agents
-    registered_agents = aevum_mesh.list_agents()
+    registered_agents = stonesage_mesh.list_agents()
     agent_id_map = {a["agent_id"]: a for a in registered_agents}
     
     # Ensure default built-in archetypes exist in choices

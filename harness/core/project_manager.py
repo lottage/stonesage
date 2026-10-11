@@ -230,7 +230,7 @@ class ProjectManager:
             }
         )
 
-        # 4. Register agent into Aevum Hive Network registry
+        # 4. Register agent into StoneSage Hive Network registry
         relational_storage.upsert_hive_agent(
             agent_id=aid,
             name=aname,
@@ -409,7 +409,7 @@ class ProjectManager:
         # 5. AGENTS.md & TOOLS.md
         agents_md = (
             f"# PEER COLLABORATION: {dest_name}\n\n"
-            f"- Peers: Can communicate with all Sovereign agents in Aevum Mesh.\n"
+            f"- Peers: Can communicate with all Sovereign agents in StoneSage Mesh.\n"
             f"- Coordinator: Node 1 Primary Accelerator (port 8001)\n"
             f"- Frontier Arbiter: Antigravity (AGY powered by gemini-3.8-flash)\n"
         )
@@ -439,7 +439,7 @@ class ProjectManager:
         with open(os.path.join(profiles_dir, f"{dest_aid}.json"), "w", encoding="utf-8") as f:
             json.dump(profile_json, f, indent=2)
 
-        # 7. Register in relational SQLite (aevum_agent_registry)
+        # 7. Register in relational SQLite (stonesage_agent_registry)
         relational_storage.upsert_hive_agent(
             agent_id=dest_aid,
             name=dest_name,

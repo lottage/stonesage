@@ -514,7 +514,7 @@ class CommandRegistry:
             border_style="cyan"
         ))
 
-        plan = consensus_engine.build_plan(prompt=prompt, agent_ids=["aevum", "sentinel"])
+        plan = consensus_engine.build_plan(prompt=prompt, agent_ids=["atlas", "sentinel"])
 
         def progress_cb(stage_type, data):
             if stage_type == "stage_start":
@@ -581,12 +581,12 @@ class CommandRegistry:
 
     @staticmethod
     def handle_mesh(args: List[str]):
-        from ..core.aevum_mesh import aevum_mesh
+        from ..core.stonesage_mesh import stonesage_mesh
         sub = args[0].lower() if args else "status"
 
         if sub in ("status", "list", "-l"):
-            agents = aevum_mesh.list_agents()
-            table = Table(title="[*] Aevum Mesh: Sovereign Agent Hive Network", border_style="cyan")
+            agents = stonesage_mesh.list_agents()
+            table = Table(title="[*] StoneSage Mesh: Sovereign Agent Hive Network", border_style="cyan")
             table.add_column("Agent ID", style="bold green")
             table.add_column("Display Name", style="cyan")
             table.add_column("Assigned Node", style="magenta")
@@ -623,8 +623,8 @@ class CommandRegistry:
 
         elif sub == "play":
             target = args[1] if len(args) > 1 else None
-            console.print("[bold cyan][AEVUM MESH] Dispatching autonomous play turn...[/bold cyan]")
-            res = aevum_mesh.trigger_autonomous_play(target)
+            console.print("[bold cyan][STONESAGE MESH] Dispatching autonomous play turn...[/bold cyan]")
+            res = stonesage_mesh.trigger_autonomous_play(target)
             if res.get("ok"):
                 mode = res.get("mode")
                 name = res.get("agent_name")
@@ -638,7 +638,7 @@ class CommandRegistry:
                         f"[white]• Channel:[/white] [magenta]{chan}[/magenta]\n"
                         f"[white]• Self-Selected Topic:[/white] {topic}\n"
                         f"[white]• Delivery:[/white] {remote}\n",
-                        title="Aevum Mesh • The Agora Chatboard",
+                        title="StoneSage Mesh • The Agora Chatboard",
                         border_style="cyan"
                     ))
                 else:
@@ -648,7 +648,7 @@ class CommandRegistry:
                         f"[white]• Agent:[/white] [cyan]{name}[/cyan]\n"
                         f"[white]• Self-Selected Topic:[/white] {topic}\n"
                         f"[white]• Saved To:[/white] [yellow]{dossier}[/yellow]\n",
-                        title="Aevum Mesh • Autonomous Dossier",
+                        title="StoneSage Mesh • Autonomous Dossier",
                         border_style="magenta"
                     ))
             else:
@@ -660,7 +660,7 @@ class CommandRegistry:
                 return
             aid = args[1]
             task_desc = " ".join(args[2:])
-            aevum_mesh.assign_user_task(aid, task_desc)
+            stonesage_mesh.assign_user_task(aid, task_desc)
             console.print(f"[bold green][OK] Assigned task to agent '{aid}':[/bold green] [white]{task_desc}[/white]")
 
         elif sub in ("clear", "clear-task"):
@@ -668,12 +668,12 @@ class CommandRegistry:
                 console.print("[yellow]Usage: /mesh clear <agent_id>[/yellow]")
                 return
             aid = args[1]
-            aevum_mesh.clear_user_task(aid)
+            stonesage_mesh.clear_user_task(aid)
             console.print(f"[bold green][OK] Cleared user task for agent '{aid}'. Agent is now idle and free to play in autonomous areas.[/bold green]")
 
         elif sub in ("mate", "reproduce", "cross", "crossover"):
             from rich.prompt import Prompt
-            agents = aevum_mesh.list_agents()
+            agents = stonesage_mesh.list_agents()
             avail_ids = [a["agent_id"] for a in agents]
             if len(avail_ids) < 2:
                 console.print("[yellow]At least two registered agents are required for digital reproduction.[/yellow]")
@@ -701,7 +701,7 @@ class CommandRegistry:
                 intent = intent_input.strip() or None
 
             console.print(f"\n[cyan][*] Initiating bilateral genetic crossover between [bold green]{p_a}[/bold green] × [bold green]{p_b}[/bold green]...[/cyan]")
-            res = aevum_mesh.reproduce_agents(p_a, p_b, focus_intent=intent)
+            res = stonesage_mesh.reproduce_agents(p_a, p_b, focus_intent=intent)
             if not res.get("ok"):
                 console.print(f"[bold red][ERR] Reproduction blocked: {res.get('error')}[/bold red]")
                 return
@@ -725,7 +725,7 @@ class CommandRegistry:
                 f"[white]• Inherited Traits:[/white] [yellow]{traits_str}[/yellow]\n"
                 f"[white]• Assigned Node:[/white] [magenta]{child.get('assigned_node')}[/magenta]\n"
                 f"[white]• Engine Pathway:[/white] {bridge_badge}\n\n"
-                f"[dim]Offspring registered into Aevum Mesh, OpenClaw contracts, and eternal memory.[/dim]\n"
+                f"[dim]Offspring registered into StoneSage Mesh, OpenClaw contracts, and eternal memory.[/dim]\n"
                 f"[dim]Attach to this new agent via '/agent select {child.get('agent_id')}' or assign tasks via '/mesh task'.[/dim]",
                 title="Digital Reproduction Complete",
                 border_style="green"
@@ -1139,7 +1139,7 @@ class CommandRegistry:
         import json
 
         console.print(Panel(
-            "[bold cyan]⚡ AEVUM CLUSTER & AGENT ACTIVITY DASHBOARD[/bold cyan]\n"
+            "[bold cyan]⚡ STONESAGE CLUSTER & AGENT ACTIVITY DASHBOARD[/bold cyan]\n"
             "[dim]Live telemetry across the engines, Autonomous Thinking Loop, FaunaSentinel, and Slot Occupancy[/dim]",
             border_style="cyan"
         ))
@@ -1194,8 +1194,8 @@ class CommandRegistry:
             console.print("[dim]• Autonomous thinking engine telemetry: probe skipped (bridge busy or offline).[/dim]")
 
         # 3. Sovereign Mesh Fleet
-        from ..core.aevum_mesh import aevum_mesh
-        agents = aevum_mesh.list_agents()
+        from ..core.stonesage_mesh import stonesage_mesh
+        agents = stonesage_mesh.list_agents()
         active_tasks = [a for a in agents if a.get("current_task")]
         if active_tasks:
             task_table = Table(title="[*] Active Operator Tasks on Fleet Agents", border_style="yellow")

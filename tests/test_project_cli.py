@@ -1,6 +1,6 @@
 """
 Unit tests for CLI Cross-Endpoint Project Lifecycle and In-Repo Agent DNA:
-- Project registration and persistence in relational storage (aevum_project_registry)
+- Project registration and persistence in relational storage (stonesage_project_registry)
 - ProjectManager creation of .stonesage/ DNA and StoneSage metadata
 - Project entering, context switching, and in-repo Agent DNA loading
 - Dynamic per-turn context injection of project persona and invariants
@@ -37,7 +37,7 @@ class TestProjectCLI(unittest.TestCase):
         relational_storage.delete_project("custom-proj")
 
     def test_project_registry_crud(self):
-        """Test relational storage CRUD for aevum_project_registry."""
+        """Test relational storage CRUD for stonesage_project_registry."""
         proj = relational_storage.upsert_project(
             project_id="test-proj-01",
             name="Test Project",
@@ -215,7 +215,7 @@ class TestProjectCLI(unittest.TestCase):
             inv = f.read()
         self.assertIn("Hamiltonian evolution must preserve unitarity", inv)
 
-        # Verify registered in Aevum Hive Network
+        # Verify registered in StoneSage Hive Network
         hive_a = relational_storage.get_hive_agent("base-schrodinger")
         self.assertIsNotNone(hive_a)
         self.assertIn("Promoted from project", hive_a["current_task"])
@@ -264,7 +264,7 @@ class TestProjectCLI(unittest.TestCase):
             inv = f.read()
         self.assertIn("Adiabatic shortcuts require counter-diabatic driving terms.", inv)
 
-        # Verify Aevum Hive registry and session
+        # Verify StoneSage Hive registry and session
         hive_a = relational_storage.get_hive_agent("quantum-prime")
         self.assertIsNotNone(hive_a)
         self.assertEqual(hive_a["name"], "Quantum Prime")

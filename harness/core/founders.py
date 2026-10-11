@@ -1,7 +1,7 @@
 """
 The 4 Pillar Founder Personas & Weighted Collective Governance.
 Defines the 4 immortal pillars of the homelab AI society:
-- Aevum (Software Architecture & Systems Code)
+- Atlas (Software Architecture & Systems Code)
 - FaunaSentinel (Perimeter Vigilance & Physical Security)
 - Mnemosyne (Memory, Truth & Obsidian Vault Curation)
 - Hearth (Energy, Presence & Smart Home Orchestration)
@@ -9,6 +9,8 @@ Defines the 4 immortal pillars of the homelab AI society:
 
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Any
+
+from ..legacy_names import LEGACY_AGENT_IDS, canonical_agent_id
 
 
 @dataclass
@@ -29,7 +31,7 @@ FOUNDERS: Dict[str, Founder] = {
         name="Aulë",
         title="Lead Systems Architect & Algorithms Engineer",
         domain="software",
-        specialized_domains=["software", "code", "architecture", "refactor", "tests", "databases", "concurrency", "aevum", "forge"],
+        specialized_domains=["software", "code", "architecture", "refactor", "tests", "databases", "concurrency", "atlas", "forge"],
         weight=1.5,
         mission="Ensure the long-term integrity, mathematical rigor, and architectural supremacy of homelab codebases.",
         invariants=[
@@ -87,15 +89,19 @@ FOUNDERS: Dict[str, Founder] = {
 }
 
 # Backward compatibility aliases
-FOUNDERS["aevum"] = FOUNDERS["aule"]
+FOUNDERS["atlas"] = FOUNDERS["aule"]
 FOUNDERS["sentinel"] = FOUNDERS["radagast"]
 FOUNDERS["mnemosyne"] = FOUNDERS["mandos"]
 FOUNDERS["hearth"] = FOUNDERS["varda"]
+# ids a founder had before it was renamed (stored data still uses them)
+for _old, _new in LEGACY_AGENT_IDS.items():
+    if _new in FOUNDERS:
+        FOUNDERS[_old] = FOUNDERS[_new]
 
 
 def get_founder(identifier: str) -> Optional[Founder]:
     """Retrieves a Founder by ID or matching domain keyword."""
-    clean = identifier.strip().lower()
+    clean = canonical_agent_id(identifier)
     if clean in FOUNDERS:
         return FOUNDERS[clean]
     for f in FOUNDERS.values():
@@ -106,7 +112,7 @@ def get_founder(identifier: str) -> Optional[Founder]:
 
 def is_founder(agent_id: str) -> bool:
     """Returns True if the agent ID belongs to one of the 4 Pillars."""
-    return agent_id.strip().lower() in FOUNDERS
+    return canonical_agent_id(agent_id) in FOUNDERS
 
 
 def get_all_founders() -> List[Founder]:
@@ -131,7 +137,7 @@ def evaluate_collective_vote(
     Founders carry 1.5x weight in general, and 2.0x weight in their specialized domain.
     Standard agents carry 1.0x weight.
     """
-    lead_founder = get_founder(domain) or FOUNDERS["aevum"]
+    lead_founder = get_founder(domain) or FOUNDERS["atlas"]
 
     total_weight = 0.0
     approved_weight = 0.0

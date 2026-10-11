@@ -29,14 +29,14 @@ class TestFounders(unittest.TestCase):
             self.assertTrue(len(f.mission) > 10)
 
         # Backward compatibility aliases
-        for alias in ["aevum", "sentinel", "mnemosyne", "hearth"]:
+        for alias in ["atlas", "sentinel", "mnemosyne", "hearth"]:
             self.assertTrue(is_founder(alias))
 
     def test_get_founder_by_id_and_domain(self):
         """Founders must resolve by primary ID or specialized domain keywords."""
         # By ID and Alias
         self.assertEqual(get_founder("aule").name, "Aulë")
-        self.assertEqual(get_founder("aevum").name, "Aulë")
+        self.assertEqual(get_founder("atlas").name, "Aulë")
         self.assertEqual(get_founder("radagast").name, "Radagast")
         self.assertEqual(get_founder("sentinel").name, "Radagast")
         self.assertEqual(get_founder("mandos").name, "Mandos")

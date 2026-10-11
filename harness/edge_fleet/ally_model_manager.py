@@ -21,7 +21,7 @@ from rich.prompt import Prompt
 
 from ..config import fleet_config, _live_profile
 from ..data_fabric.pg_storage import relational_storage
-from ..core.aevum_mesh import aevum_mesh
+from ..core.stonesage_mesh import stonesage_mesh
 
 logger = logging.getLogger("Harness.AllyModelManager")
 console = Console()
@@ -1072,7 +1072,7 @@ print("SUCCESSFULLY_RELOADED")
 
     def bind_agent(self, agent_id: str, model_key: Optional[str] = None, target_node_id: Optional[str] = None) -> bool:
         """
-        Binds an agent to a compute node in the Aevum Mesh registry,
+        Binds an agent to a compute node in the StoneSage Mesh registry,
         directing its future conversational turns to that endpoint.
         """
         clean_id = agent_id.strip().lower()

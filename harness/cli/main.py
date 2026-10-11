@@ -19,14 +19,14 @@ console = Console()
 
 def print_banner():
     console.print(Panel(
-        "[bold cyan]⚡ AEVUM UNIFIED LLM HARNESS & AGENT FLEET[/bold cyan]\n"
+        "[bold cyan]⚡ STONESAGE UNIFIED LLM HARNESS & AGENT FLEET[/bold cyan]\n"
         "[dim]llama.cpp Orchestrator • 5-Tier Memory • OpenClaw • Distributed Edge Fleet[/dim]\n\n"
         "[bold green]Available Slash Commands:[/bold green]\n"
         "  [cyan]/project[/cyan] - Cross-endpoint project workspaces (list, enter, create, leave, status)\n"
         "  [cyan]/agent[/cyan]   - OpenClaw agent sub-shell (list, build, select, detach, bind, task)\n"
         "  [cyan]/node[/cyan]    - Device-agnostic compute node & fleet manager (status, list, models, load, bind)\n"
         "  [cyan]/slots[/cyan]   - Rescale parallel slots & verify parameter preservation (/slots <N>)\n"
-        "  [cyan]/mesh[/cyan]    - Aevum Mesh Hive Network (status, play, task, clear)\n"
+        "  [cyan]/mesh[/cyan]    - StoneSage Mesh Hive Network (status, play, task, clear)\n"
         "  [cyan]/nudge[/cyan]   - Send out-of-band non-destructive intervention to an agent\n"
         "  [cyan]/streams[/cyan]   - Multiplexed background thought streams ('/stream consensus <prompt>')\n"
         "  [cyan]/consensus[/cyan] - 3-stage multi-agent cross-examination & Founder consensus\n"
@@ -193,19 +193,19 @@ def main():
             if AgentShell.active_agent and AgentShell.active_project:
                 ag_name = AgentShell.active_agent.get("name", "Agent")
                 pr_name = AgentShell.active_project.get("name", "Project")
-                prompt_html = f"\n<b><ansicyan>aevum</ansicyan></b> [<b><ansigreen>{ag_name}</ansigreen></b>] [<b><ansiyellow>{pr_name}</ansiyellow></b>] {node_tag_html}> "
-                prompt_raw = f"\n[bold cyan]aevum[/bold cyan] [[bold green]{ag_name}[/bold green]] [[bold yellow]{pr_name}[/bold yellow]] {node_tag_raw}> "
+                prompt_html = f"\n<b><ansicyan>stonesage</ansicyan></b> [<b><ansigreen>{ag_name}</ansigreen></b>] [<b><ansiyellow>{pr_name}</ansiyellow></b>] {node_tag_html}> "
+                prompt_raw = f"\n[bold cyan]stonesage[/bold cyan] [[bold green]{ag_name}[/bold green]] [[bold yellow]{pr_name}[/bold yellow]] {node_tag_raw}> "
             elif AgentShell.active_agent:
                 ag_name = AgentShell.active_agent.get("name", "Agent")
-                prompt_html = f"\n<b><ansicyan>aevum</ansicyan></b> [<b><ansigreen>{ag_name}</ansigreen></b>] {node_tag_html}> "
-                prompt_raw = f"\n[bold cyan]aevum[/bold cyan] [[bold green]{ag_name}[/bold green]] {node_tag_raw}> "
+                prompt_html = f"\n<b><ansicyan>stonesage</ansicyan></b> [<b><ansigreen>{ag_name}</ansigreen></b>] {node_tag_html}> "
+                prompt_raw = f"\n[bold cyan]stonesage[/bold cyan] [[bold green]{ag_name}[/bold green]] {node_tag_raw}> "
             elif AgentShell.active_project:
                 pr_name = AgentShell.active_project.get("name", "Project")
-                prompt_html = f"\n<b><ansicyan>aevum</ansicyan></b> [<b><ansiyellow>{pr_name}</ansiyellow></b>] {node_tag_html}> "
-                prompt_raw = f"\n[bold cyan]aevum[/bold cyan] [[bold yellow]{pr_name}[/bold yellow]] {node_tag_raw}> "
+                prompt_html = f"\n<b><ansicyan>stonesage</ansicyan></b> [<b><ansiyellow>{pr_name}</ansiyellow></b>] {node_tag_html}> "
+                prompt_raw = f"\n[bold cyan]stonesage[/bold cyan] [[bold yellow]{pr_name}[/bold yellow]] {node_tag_raw}> "
             else:
-                prompt_html = f"\n<b><ansicyan>aevum</ansicyan></b> {node_tag_html}> "
-                prompt_raw = f"\n[bold cyan]aevum[/bold cyan] {node_tag_raw}> "
+                prompt_html = f"\n<b><ansicyan>stonesage</ansicyan></b> {node_tag_html}> "
+                prompt_raw = f"\n[bold cyan]stonesage[/bold cyan] {node_tag_raw}> "
 
             if prompt_session is not None:
                 try:
@@ -234,7 +234,7 @@ def main():
 
             clean = user_input.strip()
             if clean in ("/exit", "exit", "quit", ":q"):
-                console.print("[dim]Exiting Aevum Harness. Keep silicon humming.[/dim]")
+                console.print("[dim]Exiting StoneSage Harness. Keep silicon humming.[/dim]")
                 break
 
             # Record user interaction for Dynamic Presence Engine

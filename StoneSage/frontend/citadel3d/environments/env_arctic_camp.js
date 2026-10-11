@@ -1,5 +1,5 @@
 /**
- * Aevum-3D: Arctic Expedition Encampment (Ultra-High Fidelity)
+ * StoneSage 3D: Arctic Expedition Encampment (Ultra-High Fidelity)
  * Faithful realization of Reference Image 4:
  * - Snow terrain with procedural pressed footpaths and sleigh tracks
  * - Heavy stone campfire pit with flickering flame dynamics & point lighting

@@ -298,6 +298,7 @@ UPLOADS_DIR = os.path.join(ROOT_DIR, "uploads")
 WORKSPACE_ROOT = os.path.abspath(os.path.dirname(ROOT_DIR))
 if WORKSPACE_ROOT not in sys.path:
     sys.path.insert(0, WORKSPACE_ROOT)
+from harness.legacy_names import LEGACY_AGENT_IDS, LEGACY_APK_NAMES, LEGACY_DOWNLOAD_PATHS
 ACTIVE_WORKSPACE_DIR = WORKSPACE_ROOT
 ACTIVE_GIT_REPO_DIR = WORKSPACE_ROOT
 os.makedirs(UPLOADS_DIR, exist_ok=True)
@@ -335,7 +336,7 @@ _BUILTIN_AGENT_TEMPLATES = [   # {operator}/{them}: config.json "operator" (_ren
         "icon": "⚡",
         "description": "Lead software architect, low-level Linux systems engineer, algorithms specialist, and code generation engine.",
         "system_prompt": "You are coder-agent, Lead Systems Architect and Software Engineer for {operator}'s homelab cluster. You are speaking directly with {operator} (the human operator). {operator} is the user; you are the assistant.\n\nCORE OBJECTIVES:\nDesign resilient software architectures, preserve mathematical invariants, profile Linux kernel performance, and write clean, efficient, bug-free code.\n\nSTYLE & TONE INVARIANTS (STRICT):\n1. ZERO FANTASY ROLEPLAY: Strictly do NOT write narrative stage directions or actions in asterisks (NEVER write *(I nod)*, *(I smile)*, etc.).\n2. TECHNICAL CLARITY: Speak in crisp, professional, modern engineering English. No fluff or filler.\n3. CODE RIGOR: Deliver complete, executable, and mathematically sound solutions with zero hand-waving.",
-        "aliases": ["coder-agent", "coder", "coding-agent", "architect", "aule", "aevum"],
+        "aliases": ["coder-agent", "coder", "coding-agent", "architect", "aule", "atlas", *LEGACY_AGENT_IDS],
         "assigned_node": "node1_primary",
         "preferred_model": "coordinator"
     },
@@ -588,6 +589,23 @@ from lodestone import system_profile
 from lodestone import endpoints
 from lodestone import model_loader
 from lodestone import engine_profiles
+
+
+def is_apk_request(path: str, clean_path: str) -> bool:
+    """An Android package download: any .apk path, or one of the download links (the old name's links still work)."""
+    return (clean_path.endswith(".apk") or any(n in path for n in ("stonesage.apk",) + LEGACY_APK_NAMES)
+            or clean_path in ("/download/stonesage", "/download", "/apk", "/stonesage") + LEGACY_DOWNLOAD_PATHS)
+
+
+def apk_file_path() -> str:
+    """stonesage.apk in the frontend directory; a host that still has the package under its old file name serves that."""
+    apk_path = os.path.join(FRONTEND_DIR, "stonesage.apk")
+    if not os.path.exists(apk_path):
+        for name in LEGACY_APK_NAMES:
+            if os.path.exists(os.path.join(FRONTEND_DIR, name)):
+                return os.path.join(FRONTEND_DIR, name)
+    return apk_path
+
 from stonesage.reasoning_watchdog import GLOBAL_WATCHDOG, ReasoningLoopDetector
 
 mimetypes.add_type("application/manifest+json", ".webmanifest")
@@ -2731,13 +2749,8 @@ class StoneSageHandler(http.server.SimpleHTTPRequestHandler):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
         clean_path = path.strip().rstrip("/")
-        if clean_path.endswith(".apk") or "aevum.apk" in path or "stonesage.apk" in path or clean_path in ("/download/aevum", "/download/stonesage", "/download", "/apk", "/aevum", "/stonesage"):
-            apk_filename = "stonesage.apk" if "stonesage" in clean_path else "aevum.apk"
-            apk_path = os.path.join(FRONTEND_DIR, apk_filename)
-            if not os.path.exists(apk_path):
-                fallback_apk = os.path.join(FRONTEND_DIR, "aevum.apk")
-                if os.path.exists(fallback_apk):
-                    apk_path = fallback_apk
+        if is_apk_request(path, clean_path):
+            apk_path = apk_file_path()
             if os.path.exists(apk_path):
                 total_size = os.path.getsize(apk_path)
                 self.send_response(200)
@@ -3094,13 +3107,8 @@ class StoneSageHandler(http.server.SimpleHTTPRequestHandler):
             app_route(self, parsed, {})
             return
 
-        if clean_path.endswith(".apk") or "aevum.apk" in path or "stonesage.apk" in path or clean_path in ("/download/aevum", "/download/stonesage", "/download", "/apk", "/aevum", "/stonesage"):
-            apk_filename = "stonesage.apk" if "stonesage" in clean_path else "aevum.apk"
-            apk_path = os.path.join(FRONTEND_DIR, apk_filename)
-            if not os.path.exists(apk_path):
-                fallback_apk = os.path.join(FRONTEND_DIR, "aevum.apk")
-                if os.path.exists(fallback_apk):
-                    apk_path = fallback_apk
+        if is_apk_request(path, clean_path):
+            apk_path = apk_file_path()
             
             if os.path.exists(apk_path):
                 self.close_connection = True
@@ -3525,8 +3533,8 @@ class StoneSageHandler(http.server.SimpleHTTPRequestHandler):
 
         elif path == "/api/garden/status":
             try:
-                from harness.core.landscape_garden_engine import landscape_garden_engine
-                self.send_json({"ok": True, "data": landscape_garden_engine.get_garden_status()})
+                from harness.core.irrigation_engine import irrigation_engine
+                self.send_json({"ok": True, "data": irrigation_engine.get_irrigation_status()})
             except Exception as e:
                 self.send_json({"ok": False, "error": str(e)}, 500)
             return
@@ -5554,13 +5562,13 @@ class StoneSageHandler(http.server.SimpleHTTPRequestHandler):
                     zone = body.get("zone", "")
                     action = body.get("action", "open")
                     duration = int(body.get("duration_minutes", 15))
-                    from harness.core.landscape_garden_engine import landscape_garden_engine
+                    from harness.core.irrigation_engine import irrigation_engine
                     if action == "open":
-                        res = landscape_garden_engine.open_zone(zone, duration_minutes=duration)
+                        res = irrigation_engine.open_zone(zone, duration_minutes=duration)
                     elif action == "close_all":
-                        res = landscape_garden_engine.close_all_zones()
+                        res = irrigation_engine.close_all_zones()
                     else:
-                        res = landscape_garden_engine.close_zone(zone)
+                        res = irrigation_engine.close_zone(zone)
                     self.send_json(res)
                 except Exception as e:
                     self.send_json({"ok": False, "error": str(e)}, 500)
@@ -5569,8 +5577,8 @@ class StoneSageHandler(http.server.SimpleHTTPRequestHandler):
             elif path == "/api/garden/rain_delay":
                 try:
                     enabled = bool(body.get("enabled", True))
-                    from harness.core.landscape_garden_engine import landscape_garden_engine
-                    res = landscape_garden_engine.set_rain_delay(enabled)
+                    from harness.core.irrigation_engine import irrigation_engine
+                    res = irrigation_engine.set_rain_delay(enabled)
                     self.send_json(res)
                 except Exception as e:
                     self.send_json({"ok": False, "error": str(e)}, 500)
@@ -5578,8 +5586,8 @@ class StoneSageHandler(http.server.SimpleHTTPRequestHandler):
 
             elif path == "/api/garden/close_all":
                 try:
-                    from harness.core.landscape_garden_engine import landscape_garden_engine
-                    res = landscape_garden_engine.close_all_zones()
+                    from harness.core.irrigation_engine import irrigation_engine
+                    res = irrigation_engine.close_all_zones()
                     self.send_json(res)
                 except Exception as e:
                     self.send_json({"ok": False, "error": str(e)}, 500)

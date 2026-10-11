@@ -1,5 +1,5 @@
 /**
- * Aevum-3D: Procedural High-Resolution Texture Synthesis Engine
+ * StoneSage 3D: Procedural High-Resolution Texture Synthesis Engine
  * Generates authentic architectural textures directly in-memory via HTML5 Canvas.
  * Zero external asset downloads - Instant offline execution with rich material realism.
  */

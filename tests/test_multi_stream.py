@@ -72,7 +72,7 @@ class TestMultiStreamView(unittest.TestCase):
         }
         # Mock answers:
         # 1. Number of streams -> "2"
-        # 2. Agent 1 -> "aevum"
+        # 2. Agent 1 -> "atlas"
         # 3. Node for Agent 1 -> "node1_primary"
         # 4. Agent 2 -> "sentinel"
         # 5. Node for Agent 2 -> "node2_ally_x"
@@ -80,7 +80,7 @@ class TestMultiStreamView(unittest.TestCase):
         # 7. Confirm launch -> "y"
         mock_ask.side_effect = [
             "2",
-            "aevum",
+            "atlas",
             "node1_primary",
             "sentinel",
             "node2_ally_x",
@@ -100,7 +100,7 @@ class TestMultiStreamView(unittest.TestCase):
         self.assertEqual(len(plan["configs"]), 2)
 
         cfg1 = plan["configs"][0]
-        self.assertEqual(cfg1.agent_id, "aevum")
+        self.assertEqual(cfg1.agent_id, "atlas")
         self.assertEqual(cfg1.node_id, "node1_primary")
 
         cfg2 = plan["configs"][1]
