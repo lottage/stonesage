@@ -221,7 +221,10 @@ class CourageAgent:
                  runs_on_fn: Optional[Callable[[], Optional[str]]] = None,
                  pending: Optional[PendingActions] = None, max_steps: int = 5, timeout: float = 90.0,
                  post: Callable[[str, Dict[str, Any], float], Dict[str, Any]] = _http_post_json,
-                 stream_post: Optional[Callable[[str, Dict[str, Any], float], Iterator[Dict[str, Any]]]] = None):
+                 stream_post: Optional[Callable[[str, Dict[str, Any], float], Iterator[Dict[str, Any]]]] = None,
+                 model: str = "coordinator"):
+        """model: the endpoint role (or model name) put in each request, the agent's brain (agents.py); the default is
+        Computer's."""
         base = llm_url.rstrip("/")
         if not base.endswith("/chat/completions"):
             base = base + ("/chat/completions" if base.endswith("/v1") else "/v1/chat/completions")
@@ -238,6 +241,10 @@ class CourageAgent:
         self.reflex_resolve: Optional[Callable[[str, Callable[[str], Dict[str, Any]]], Optional[Tuple[Dict[str, Any], Dict[str, str]]]]] = None
         self.trace_log: Optional[TraceLog] = None  # one record per turn (courage/trace.py); None = not recorded
         self.persona_fn: Optional[Callable[[], Optional[str]]] = None  # soul.py persona.md; None = prompt.PERSONA
+        self.model = model
+        # A house agent (Computer) gets the presence card and the "facts come from a tool" reminder in its prompt; an agent
+        # without a home (agents.py: Atlas) gets only its persona and recalled memory notes.
+        self.home_context = True
         self.memory = None  # courage/memory.py ConversationMemory: recalled into the prompt, learned from after a chat
         self.escalation = None  # courage/escalation.py Escalation: the ladder a failed turn climbs (Phase 6)
         # engine lease (engine_lease.EngineLease.brain): None | {"mode": "lite", url, until} | {"mode": "on_loan", until}
@@ -271,14 +278,17 @@ class CourageAgent:
         return msg
 
     def _body(self, messages: List[Dict[str, Any]], max_tokens: Optional[int]) -> Dict[str, Any]:
-        return {
-            "model": "coordinator",
+        body = {
+            "model": self.model,
             "messages": messages,
             "tools": self.tools.openai_tools(),
             "temperature": 0.3,
             "max_tokens": max_tokens or MAX_REPLY_TOKENS,
             "chat_template_kwargs": {"enable_thinking": False},
         }
+        if not body["tools"]:
+            del body["tools"]       # an agent with no tools offers none (an empty list is not sent)
+        return body
 
     @staticmethod
     def _gen(timings: Optional[Dict[str, Any]], usage: Optional[Dict[str, Any]]):
@@ -331,7 +341,37 @@ class CourageAgent:
             tr.recalled = [{"id": n["id"], "score": n["score"]} for n in notes]
         return self.memory.card(notes)
 
+    @staticmethod
+    def _history_messages(history: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        out = []
+        turns = [m for m in history if m.get("role") in ("user", "assistant") and isinstance(m.get("content"), str)]
+        for m in turns[-HISTORY_TURNS:]:
+            text = THINK.sub("", TOOL_MARKUP.sub("", m["content"])).strip()
+            if len(text) > HISTORY_CHARS:
+                text = text[:HISTORY_CHARS] + " …"
+            if text:
+                out.append({"role": m["role"], "content": text})
+        return out
+
+    def _build_plain_messages(self, history: List[Dict[str, Any]], memory_card: str = "") -> List[Dict[str, Any]]:
+        """The prompt of an agent without a home: persona, then recalled notes (if any), then the history."""
+        persona = None
+        if self.persona_fn:
+            try:
+                persona = self.persona_fn()
+            except Exception:
+                persona = None
+        system = build_static_prompt(None, persona)
+        if memory_card and FRESH_FACTS_AS == "user":      # a strict template takes one system message only
+            return [{"role": "system", "content": system + "\n\n" + memory_card}] + self._history_messages(history)
+        msgs: List[Dict[str, Any]] = [{"role": "system", "content": system}]
+        if memory_card:
+            msgs.append({"role": "system", "content": memory_card})
+        return msgs + self._history_messages(history)
+
     def _build_messages(self, history: List[Dict[str, Any]], memory_card: str = "") -> List[Dict[str, Any]]:
+        if not self.home_context:
+            return self._build_plain_messages(history, memory_card)
         presence = None
         if self.presence_fn:
             try:
@@ -364,13 +404,7 @@ class CourageAgent:
             # right after the persona + the tool schemas the chat template appends to it: those ~1,300 tokens stay a
             # cacheable prefix, only this card (~250) is re-read, and it is still early, away from the user's words
             msgs.append({"role": "system", "content": context})
-        turns = [m for m in history if m.get("role") in ("user", "assistant") and isinstance(m.get("content"), str)]
-        for m in turns[-HISTORY_TURNS:]:
-            text = THINK.sub("", TOOL_MARKUP.sub("", m["content"])).strip()
-            if len(text) > HISTORY_CHARS:
-                text = text[:HISTORY_CHARS] + " …"
-            if text:
-                msgs.append({"role": m["role"], "content": text})
+        msgs.extend(self._history_messages(history))
         base = 3 if position == "second" else 2           # messages before the first history turn, plus that turn
         if position == "late":
             # A/B 2026-09-28: tool choice mid-conversation fell to 43/46 twice (the card next to the user's words
@@ -593,7 +627,7 @@ class CourageAgent:
                 text = TRAILING_OFFER.sub("", THINK.sub("", msg.get("content") or "")).strip()
                 msg["content"] = _without_action_offer(text) if asked else text
             if not calls and not nudged and not sent and len(msg.get("content") or "") <= PROMISE_MAX_CHARS \
-                    and PROMISE.search(msg.get("content") or ""):
+                    and PROMISE.search(msg.get("content") or "") and self.tools.openai_tools():   # no tools: nothing to call
                 nudged = True
                 tr.trigger("nudged")
                 messages.append({"role": "assistant", "content": msg.get("content") or ""})

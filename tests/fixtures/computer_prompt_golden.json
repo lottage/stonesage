@@ -1,0 +1,554 @@
+[
+ {
+  "chat_template_kwargs": {
+   "enable_thinking": false
+  },
+  "max_tokens": 1200,
+  "messages": [
+   {
+    "content": "You are Computer.\nYou run on an example GPU, in the attic.",
+    "role": "system"
+   },
+   {
+    "content": "[Who is where, Sun 12:00: GPS says home/away; camera sightings are past views, call presence_now or camera_look for now]\n- Alex: seen 3 min ago\n- Sam: no recent sighting\n- Bella: seen 12 min ago on Living Room\n- Rex: no recent sighting\n\n[memory] You like tea.",
+    "role": "system"
+   },
+   {
+    "content": "What is the temperature inside?",
+    "role": "user"
+   }
+  ],
+  "model": "coordinator",
+  "temperature": 0.3,
+  "tools": [
+   {
+    "function": {
+     "description": "Where people (Alex, Sam) and pets (Bella the cat, Rex the dog) are: last camera sighting, when, and what they were doing. Pass `who` to find one of them: if their sighting is stale this also looks through the camera right now.",
+     "name": "presence_now",
+     "parameters": {
+      "properties": {
+       "who": {
+        "enum": [
+         "alex",
+         "sam",
+         "bella",
+         "rex"
+        ],
+        "type": "string"
+       }
+      },
+      "required": [],
+      "type": "object"
+     }
+    },
+    "type": "function"
+   },
+   {
+    "function": {
+     "description": "Read current Home Assistant states for one domain, optionally filtered by a word in the name (area or device).",
+     "name": "ha_get_states",
+     "parameters": {
+      "properties": {
+       "domain": {
+        "enum": [
+         "light",
+         "switch",
+         "climate",
+         "sensor",
+         "binary_sensor",
+         "media_player",
+         "lock",
+         "cover",
+         "fan",
+         "person"
+        ],
+        "type": "string"
+       },
+       "name_contains": {
+        "description": "only when the user names a room or device, e.g. 'kitchen', 'tv'; omit for 'any'/'all'",
+        "type": "string"
+       }
+      },
+      "required": [
+       "domain"
+      ],
+      "type": "object"
+     }
+    },
+    "type": "function"
+   },
+   {
+    "function": {
+     "description": "Look through one camera right now and describe what is visible (people, pets, vehicles, animals).",
+     "name": "camera_look",
+     "parameters": {
+      "properties": {
+       "camera": {
+        "enum": [
+         "living_room",
+         "driveway",
+         "side_yard",
+         "back_yard"
+        ],
+        "type": "string"
+       }
+      },
+      "required": [
+       "camera"
+      ],
+      "type": "object"
+     }
+    },
+    "type": "function"
+   },
+   {
+    "function": {
+     "description": "Pan a PTZ camera through its presets and describe each view. Slower (about 20-40 s); use when one look is not enough.",
+     "name": "camera_scan",
+     "parameters": {
+      "properties": {
+       "camera": {
+        "enum": [
+         "living_room",
+         "driveway"
+        ],
+        "type": "string"
+       }
+      },
+      "required": [
+       "camera"
+      ],
+      "type": "object"
+     }
+    },
+    "type": "function"
+   },
+   {
+    "function": {
+     "description": "Search long-term memory: what people told you in earlier conversations, and notes about the home, family, devices or past events.",
+     "name": "memory_search",
+     "parameters": {
+      "properties": {
+       "query": {
+        "type": "string"
+       }
+      },
+      "required": [
+       "query"
+      ],
+      "type": "object"
+     }
+    },
+    "type": "function"
+   },
+   {
+    "function": {
+     "description": "Change a device through Home Assistant (lights, switches, fans, climate, media, scenes, covers, locks). Alex approves it first.",
+     "name": "ha_call",
+     "parameters": {
+      "properties": {
+       "data": {
+        "description": "extra service data, e.g. {\"temperature\": 70}",
+        "type": "object"
+       },
+       "domain": {
+        "enum": [
+         "climate",
+         "cover",
+         "fan",
+         "light",
+         "lock",
+         "media_player",
+         "scene",
+         "switch"
+        ],
+        "type": "string"
+       },
+       "entity_id": {
+        "type": "string"
+       },
+       "service": {
+        "description": "e.g. turn_on, turn_off, set_temperature",
+        "type": "string"
+       }
+      },
+      "required": [
+       "domain",
+       "service",
+       "entity_id"
+      ],
+      "type": "object"
+     }
+    },
+    "type": "function"
+   },
+   {
+    "function": {
+     "description": "Send a push notification to Alex's phone (the only phone registered in Home Assistant). Alex approves it first.",
+     "name": "notify",
+     "parameters": {
+      "properties": {
+       "message": {
+        "type": "string"
+       },
+       "target": {
+        "enum": [
+         "alex"
+        ],
+        "type": "string"
+       }
+      },
+      "required": [
+       "message"
+      ],
+      "type": "object"
+     }
+    },
+    "type": "function"
+   },
+   {
+    "function": {
+     "description": "Announce a short message out loud on the Echo speakers (kitchen, bathroom or every Echo). Alex approves it first.",
+     "name": "speak",
+     "parameters": {
+      "properties": {
+       "message": {
+        "type": "string"
+       },
+       "room": {
+        "enum": [
+         "kitchen",
+         "bathroom",
+         "everywhere"
+        ],
+        "type": "string"
+       }
+      },
+      "required": [
+       "message"
+      ],
+      "type": "object"
+     }
+    },
+    "type": "function"
+   },
+   {
+    "function": {
+     "description": "Fix who a camera sighting shows, when the name on it is wrong ('that wasn't Rex, it was Bella'). Acts on the newest sighting of `who` (the name shown now; 'someone' for an unidentified person). action is_really re-files it under `name` (for a person this also teaches face recognition); wrong hides it. The previous sighting then shows.",
+     "name": "correct_sighting",
+     "parameters": {
+      "properties": {
+       "action": {
+        "enum": [
+         "is_really",
+         "wrong"
+        ],
+        "type": "string"
+       },
+       "name": {
+        "description": "who it really was (for is_really)",
+        "type": "string"
+       },
+       "who": {
+        "description": "name on the sighting now, e.g. rex",
+        "type": "string"
+       }
+      },
+      "required": [
+       "who",
+       "action"
+      ],
+      "type": "object"
+     }
+    },
+    "type": "function"
+   }
+  ]
+ },
+ {
+  "chat_template_kwargs": {
+   "enable_thinking": false
+  },
+  "max_tokens": 1200,
+  "messages": [
+   {
+    "content": "You are Computer.\nYou run on an example GPU, in the attic.",
+    "role": "system"
+   },
+   {
+    "content": "[Who is where, Sun 12:00: GPS says home/away; camera sightings are past views, call presence_now or camera_look for now]\n- Alex: seen 3 min ago\n- Sam: no recent sighting\n- Bella: seen 12 min ago on Living Room\n- Rex: no recent sighting\n\n[memory] You like tea.",
+    "role": "system"
+   },
+   {
+    "content": "hi",
+    "role": "user"
+   },
+   {
+    "content": "Hello.",
+    "role": "assistant"
+   },
+   {
+    "content": "thanks",
+    "role": "user"
+   },
+   {
+    "content": "Anytime.",
+    "role": "assistant"
+   },
+   {
+    "content": "For the next message: device states, temperatures, who is where, camera views and household notes (cars, preferences, past events) must come from a tool call you make now, not from earlier replies or guesses. A greeting or small talk needs no tools.",
+    "role": "system"
+   },
+   {
+    "content": "Where is Bella?",
+    "role": "user"
+   }
+  ],
+  "model": "coordinator",
+  "temperature": 0.3,
+  "tools": [
+   {
+    "function": {
+     "description": "Where people (Alex, Sam) and pets (Bella the cat, Rex the dog) are: last camera sighting, when, and what they were doing. Pass `who` to find one of them: if their sighting is stale this also looks through the camera right now.",
+     "name": "presence_now",
+     "parameters": {
+      "properties": {
+       "who": {
+        "enum": [
+         "alex",
+         "sam",
+         "bella",
+         "rex"
+        ],
+        "type": "string"
+       }
+      },
+      "required": [],
+      "type": "object"
+     }
+    },
+    "type": "function"
+   },
+   {
+    "function": {
+     "description": "Read current Home Assistant states for one domain, optionally filtered by a word in the name (area or device).",
+     "name": "ha_get_states",
+     "parameters": {
+      "properties": {
+       "domain": {
+        "enum": [
+         "light",
+         "switch",
+         "climate",
+         "sensor",
+         "binary_sensor",
+         "media_player",
+         "lock",
+         "cover",
+         "fan",
+         "person"
+        ],
+        "type": "string"
+       },
+       "name_contains": {
+        "description": "only when the user names a room or device, e.g. 'kitchen', 'tv'; omit for 'any'/'all'",
+        "type": "string"
+       }
+      },
+      "required": [
+       "domain"
+      ],
+      "type": "object"
+     }
+    },
+    "type": "function"
+   },
+   {
+    "function": {
+     "description": "Look through one camera right now and describe what is visible (people, pets, vehicles, animals).",
+     "name": "camera_look",
+     "parameters": {
+      "properties": {
+       "camera": {
+        "enum": [
+         "living_room",
+         "driveway",
+         "side_yard",
+         "back_yard"
+        ],
+        "type": "string"
+       }
+      },
+      "required": [
+       "camera"
+      ],
+      "type": "object"
+     }
+    },
+    "type": "function"
+   },
+   {
+    "function": {
+     "description": "Pan a PTZ camera through its presets and describe each view. Slower (about 20-40 s); use when one look is not enough.",
+     "name": "camera_scan",
+     "parameters": {
+      "properties": {
+       "camera": {
+        "enum": [
+         "living_room",
+         "driveway"
+        ],
+        "type": "string"
+       }
+      },
+      "required": [
+       "camera"
+      ],
+      "type": "object"
+     }
+    },
+    "type": "function"
+   },
+   {
+    "function": {
+     "description": "Search long-term memory: what people told you in earlier conversations, and notes about the home, family, devices or past events.",
+     "name": "memory_search",
+     "parameters": {
+      "properties": {
+       "query": {
+        "type": "string"
+       }
+      },
+      "required": [
+       "query"
+      ],
+      "type": "object"
+     }
+    },
+    "type": "function"
+   },
+   {
+    "function": {
+     "description": "Change a device through Home Assistant (lights, switches, fans, climate, media, scenes, covers, locks). Alex approves it first.",
+     "name": "ha_call",
+     "parameters": {
+      "properties": {
+       "data": {
+        "description": "extra service data, e.g. {\"temperature\": 70}",
+        "type": "object"
+       },
+       "domain": {
+        "enum": [
+         "climate",
+         "cover",
+         "fan",
+         "light",
+         "lock",
+         "media_player",
+         "scene",
+         "switch"
+        ],
+        "type": "string"
+       },
+       "entity_id": {
+        "type": "string"
+       },
+       "service": {
+        "description": "e.g. turn_on, turn_off, set_temperature",
+        "type": "string"
+       }
+      },
+      "required": [
+       "domain",
+       "service",
+       "entity_id"
+      ],
+      "type": "object"
+     }
+    },
+    "type": "function"
+   },
+   {
+    "function": {
+     "description": "Send a push notification to Alex's phone (the only phone registered in Home Assistant). Alex approves it first.",
+     "name": "notify",
+     "parameters": {
+      "properties": {
+       "message": {
+        "type": "string"
+       },
+       "target": {
+        "enum": [
+         "alex"
+        ],
+        "type": "string"
+       }
+      },
+      "required": [
+       "message"
+      ],
+      "type": "object"
+     }
+    },
+    "type": "function"
+   },
+   {
+    "function": {
+     "description": "Announce a short message out loud on the Echo speakers (kitchen, bathroom or every Echo). Alex approves it first.",
+     "name": "speak",
+     "parameters": {
+      "properties": {
+       "message": {
+        "type": "string"
+       },
+       "room": {
+        "enum": [
+         "kitchen",
+         "bathroom",
+         "everywhere"
+        ],
+        "type": "string"
+       }
+      },
+      "required": [
+       "message"
+      ],
+      "type": "object"
+     }
+    },
+    "type": "function"
+   },
+   {
+    "function": {
+     "description": "Fix who a camera sighting shows, when the name on it is wrong ('that wasn't Rex, it was Bella'). Acts on the newest sighting of `who` (the name shown now; 'someone' for an unidentified person). action is_really re-files it under `name` (for a person this also teaches face recognition); wrong hides it. The previous sighting then shows.",
+     "name": "correct_sighting",
+     "parameters": {
+      "properties": {
+       "action": {
+        "enum": [
+         "is_really",
+         "wrong"
+        ],
+        "type": "string"
+       },
+       "name": {
+        "description": "who it really was (for is_really)",
+        "type": "string"
+       },
+       "who": {
+        "description": "name on the sighting now, e.g. rex",
+        "type": "string"
+       }
+      },
+      "required": [
+       "who",
+       "action"
+      ],
+      "type": "object"
+     }
+    },
+    "type": "function"
+   }
+  ]
+ }
+]

@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="deu">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="robots" content="noindex">
+  <title>StoneSage - Log on</title>
+  <link rel="icon" type="image/svg+xml" href="/icon.svg">
+  <link rel="stylesheet" href="/style.css?v=4.3.2">
+  <style>
+    body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+           background: var(--term-bg); color: var(--term-text); font-family: var(--font-mono); }
+    .logon { width: min(420px, calc(100vw - 32px)); background: var(--term-surface); border: 2px outset var(--term-border);
+             box-shadow: 4px 4px 0 var(--term-surface-sunken); }
+    .logon .title { background: var(--term-header-bg); color: var(--term-text-bright); padding: 6px 10px; font-weight: bold;
+                    border-bottom: 1px solid var(--term-border-dim); }
+    .logon .body { padding: 16px 14px 14px; }
+    .logon p { margin: 0 0 12px; color: var(--term-text-dim); font-size: 0.85rem; line-height: 1.4; }
+    .logon label { display: block; font-size: 0.8rem; color: var(--term-text-muted); margin-bottom: 4px; }
+    .logon input { width: 100%; box-sizing: border-box; padding: 8px; font: inherit; color: var(--term-text);
+                   background: var(--term-code-bg); border: 2px inset var(--term-border-dim); }
+    .logon .row { display: flex; gap: 8px; align-items: center; margin-top: 12px; }
+    .logon button { padding: 7px 16px; font: inherit; font-weight: bold; color: var(--term-text); background: var(--term-btn-bg);
+                    border: 2px outset var(--term-btn-border); cursor: pointer; }
+    .logon button:active { border-style: inset; }
+    .logon button:disabled { opacity: 0.6; cursor: default; }
+    .logon .msg { min-height: 1.2em; font-size: 0.8rem; color: var(--term-alert); }
+    .logon .hint { margin-top: 14px; font-size: 0.75rem; color: var(--term-text-muted); }
+    .logon code { color: var(--term-text-bright); }
+  </style>
+</head>
+<body>
+  <form class="logon" id="logon" autocomplete="off">
+    <div class="title">StoneSage - Log on</div>
+    <div class="body">
+      <p>This server needs its key before it shows anything.</p>
+      <label for="key">Server key</label>
+      <input id="key" name="key" type="password" autocomplete="current-password" autofocus spellcheck="false" required>
+      <div class="row">
+        <button type="submit" id="go">OK</button>
+        <span class="msg" id="msg" role="alert"></span>
+      </div>
+      <div class="hint">On the machine that runs StoneSage: <code>python -m stonesage.auth show-key</code>
+        (with Docker: the <code>STONESAGE_API_KEY</code> line in the <code>.env</code> next to docker-compose.yml).</div>
+    </div>
+  </form>
+  <script>
+    (function () {
+      var form = document.getElementById('logon'), key = document.getElementById('key'),
+          msg = document.getElementById('msg'), go = document.getElementById('go');
+      function nextUrl() {
+        // only a path on this site: never a full URL (an open redirect after login)
+        var n = new URLSearchParams(location.search).get('next') || '/';
+        return (n.charAt(0) === '/' && n.charAt(1) !== '/' && n.charAt(1) !== '\\') ? n : '/';
+      }
+      form.addEventListener('submit', function (ev) {
+        ev.preventDefault();
+        msg.textContent = '';
+        go.disabled = true;
+        fetch('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                   body: JSON.stringify({ key: key.value }) })
+          .then(function (r) { return r.json().catch(function () { return {}; }).then(function (d) { return { status: r.status, data: d }; }); })
+          .then(function (res) {
+            if (res.status === 200 && res.data.ok) { location.href = nextUrl(); return; }
+            msg.textContent = res.status === 429 ? 'Too many tries. Wait a few minutes.' : (res.data.error || 'That did not work.');
+            go.disabled = false; key.select();
+          })
+          .catch(function () { msg.textContent = 'Cannot reach the server.'; go.disabled = false; });
+      });
+    })();
+  </script>
+</body>
+</html>

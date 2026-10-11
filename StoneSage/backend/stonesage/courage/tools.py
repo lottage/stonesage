@@ -12,7 +12,7 @@ import json
 import re
 import time
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
 from .household import Household
 from .prompt import home_status_text
@@ -41,6 +41,17 @@ def infra_words(extra=()) -> tuple:
     return INFRA_WORDS + tuple(str(w).lower() for w in (extra or ()) if str(w).strip())
 # Direct commands run at once; these still ask even when ordered outright (security)
 ALWAYS_CONFIRM = {("lock", "unlock"), ("cover", "open_cover")}
+# ...and by class, not only by exact service: anything that opens or releases a garage/gate/door lock asks, whatever domain
+# the integration modelled it as (a garage opener is often a switch or a button)
+CONFIRM_ENTITY_WORDS = ("garage", "gate", "deadbolt", "door_lock", "doorlock")
+CLOSING_SERVICES = ("turn_off", "close_cover", "lock")
+
+
+def always_confirm(domain: str, service: str, entity_id: str = "") -> bool:
+    if (domain, service) in ALWAYS_CONFIRM or domain in ("alarm_control_panel", "valve", "siren"):
+        return True
+    eid = str(entity_id or "").lower()
+    return service not in CLOSING_SERVICES and any(w in eid for w in CONFIRM_ENTITY_WORDS)
 # words in the user's message that make an action a direct order, per HA service / tool
 DIRECT_SERVICE_WORDS: Dict[str, str] = {
     "turn_on": r"\b(turn|switch|put|flip)\b.*\bon\b|\b(on|up)\s*(please|now)?\s*$|\b(light up|start|activate)\b",
@@ -115,8 +126,11 @@ def _clip(obj: Any) -> str:
 
 
 class CourageTools:
-    def __init__(self, deps: CourageDeps):
+    def __init__(self, deps: CourageDeps, allowed: Optional[Iterable[str]] = None):
+        """allowed: the tool names this agent may use (None = every tool, as Computer has them). Any other tool is never
+        offered to the model and is refused by validate() as unknown, so an agent without a home cannot reach one."""
         self.deps = deps
+        self.allowed = None if allowed is None else frozenset(allowed)
         self.clock: Callable[[], float] = time.monotonic          # tests move it
         self._commanded: Dict[str, Tuple[Optional[str], float]] = {}   # entity -> (state we left it in, when)
         hh = deps.household
@@ -214,6 +228,8 @@ class CourageTools:
 
     # ---- schema / metadata -------------------------------------------------
     def _available(self, name: str) -> bool:
+        if self.allowed is not None and name not in self.allowed:
+            return False
         check = self.specs.get(name, {}).get("available")
         try:
             return check is None or bool(check())
@@ -312,7 +328,7 @@ class CourageTools:
             return False
         if name == "ha_call":
             service = args.get("service", "")
-            if (args.get("domain"), service) in ALWAYS_CONFIRM:
+            if always_confirm(args.get("domain", ""), service, args.get("entity_id", "")):
                 return False
             pattern = DIRECT_SERVICE_WORDS.get(service)
             return bool(pattern and re.search(pattern, text))

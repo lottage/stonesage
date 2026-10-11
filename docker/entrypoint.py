@@ -6,6 +6,8 @@ rewritten here; edit it in the cockpit or in the volume.
 
     COORDINATOR_URL / WORKER_URL / EMBEDDER_URL / VISION_URL   -> cluster.<role>_url   (the engine services)
     STONESAGE_APPS   comma list of apps to load ("hearth"; empty = none)  -> apps
+    STONESAGE_API_KEY                                             -> not written: the server reads it from the environment
+    STONESAGE_ALLOWED_HOSTS  comma list of host NAMES the cockpit is reached by -> api.allowed_hosts
     HASS_URL / HASS_TOKEN                                         -> homeassistant.url / .token (only when set)
     COORDINATOR_CPU  1 when the coordinator engine runs on a CPU   -> cluster.coordinator_cpu (longer waits for its answers)
     TZ                                                            -> server.timezone (when set and not UTC)
@@ -36,6 +38,9 @@ def seed_config(env: Mapping[str, str]) -> Dict[str, Any]:
     ha = {k: env[var].strip() for k, var in (("url", "HASS_URL"), ("token", "HASS_TOKEN")) if env.get(var, "").strip()}
     if ha:
         cfg["homeassistant"] = ha
+    hosts = [h.strip() for h in env.get("STONESAGE_ALLOWED_HOSTS", "").split(",") if h.strip()]
+    if hosts:
+        cfg["api"] = {"allowed_hosts": hosts}
     tz = env.get("TZ", "").strip()
     if tz and tz.upper() != "UTC":
         cfg["server"]["timezone"] = tz

@@ -1,5 +1,9 @@
 """Shell-command safety for the platform's tools: allowed binaries, safe systemctl actions, dangerous patterns, and
-workspace scoping. The Home Assistant limits that used to live here are in hearth/ha_policy.py (docs/LAYERS.md)."""
+workspace scoping. The Home Assistant limits that used to live here are in hearth/ha_policy.py (docs/LAYERS.md).
+
+A command is never given to a shell. `parse_command` turns the text into an argv list or refuses it, and `run_command`
+executes that list with shell=False, so there is nothing for `;`, `|`, backticks or `$(...)` to act on (they are refused
+anyway). Anything that is not clearly allowed is refused: the check fails closed."""
 
 import os
 import re
@@ -24,9 +28,23 @@ ALLOWED_BINARIES = {
     # Filesystem & Inspection
     "ls", "dir", "cat", "head", "tail", "grep", "find", "findstr",
     "wc", "pwd", "echo", "diff", "mkdir", "tree", "type", "touch", "cp", "mv",
-    # Network, Diagnostics & Homelab Services
-    "curl", "wget", "jq", "ping", "systemctl", "journalctl", "uptime", "free", "df", "ps"
+    # Diagnostics & Homelab Services (no curl/wget: a download-and-run or a data upload is not a diagnostic)
+    "jq", "ping", "systemctl", "journalctl", "uptime", "free", "df", "ps"
 }
+
+# Arguments that turn an allowed program into "run this text as code" or "run that other program"
+INLINE_CODE_FLAGS = {
+    "python": {"-c"}, "python3": {"-c"}, "py": {"-c"},
+    "node": {"-e", "--eval", "-p", "--print"}, "deno": {"eval"}, "bun": {"-e", "--eval"},
+    "git": {"-c", "--exec-path", "--upload-pack", "--receive-pack", "--config-env", "-C"},
+    "find": {"-exec", "-execdir", "-ok", "-okdir", "-delete", "-fprint", "-fprint0", "-fprintf", "-fls"},
+    "npx": {"-c", "--call"}, "npm": {"exec", "x"}, "pnpm": {"exec", "dlx"}, "yarn": {"dlx", "exec"},
+}
+
+# What a shell would act on: chaining, pipes, redirection, substitution, subshells, newlines, NUL, and on Windows the
+# percent and caret expansions. There is no shell here (argv goes straight to the program), so a command that has any of
+# these is refused rather than run with the characters taken literally.
+SHELL_META = set(";&|<>`$(){}\n\r\x00") | ({"%", "^"} if os.name == "nt" else set())
 
 # Subcommands explicitly allowed for systemctl (read-only + safe service restarts)
 ALLOWED_SYSTEMCTL_ACTIONS = {
@@ -55,60 +73,103 @@ DANGEROUS_COMMAND_PATTERNS = [
     r"\btruncate\s+table\b",                   # Table destruction
 ]
 
+NAVIGATION = ("cd", "chdir", "set-location")      # builtins: the caller tracks the working directory itself
 
-def validate_terminal_command(command_str: str, cwd: str = "", allowed_roots: Optional[List[str]] = None) -> Tuple[bool, str]:
-    """
-    Validates a shell/terminal command against coding binaries, safety bounds,
-    and filesystem scope.
-    Returns: (is_allowed, reason)
-    """
+
+def parse_command(command_str: str) -> Tuple[bool, str, List[str]]:
+    """Command text -> (ok, reason, argv). Refuses shell metacharacters, unbalanced quotes, a program that is not a bare
+    name on the allowlist, inline-code flags and anything outside the systemctl rules. The argv is what to execute with
+    shell=False."""
     cmd = (command_str or "").strip()
     if not cmd:
-        return False, "Command string cannot be empty."
-
-    # 1. Dangerous Pattern Blacklist Check
+        return False, "Command string cannot be empty.", []
+    bad = sorted({c for c in cmd if c in SHELL_META})
+    if bad:
+        shown = ", ".join(repr(c) for c in bad)
+        return False, f"Shell operators and substitution are not allowed ({shown}). Run one plain command.", []
     for pattern in DANGEROUS_COMMAND_PATTERNS:
         if re.search(pattern, cmd, re.IGNORECASE):
-            return False, f"Command contains forbidden destructive pattern matching '{pattern}'."
-
-    # 2. Extract base binary
-    # Handle PowerShell command chains or pipe splits safely
-    # Extract first token
-    parts = cmd.split(None, 1)
-    base_token = parts[0].strip().strip('"').strip("'").lower()
-    
-    # Strip path prefix (e.g. /usr/bin/git -> git, C:\Python313\python.exe -> python)
-    base_name = os.path.basename(base_token).lower()
-    if base_name.endswith(".exe"):
-        base_name = base_name[:-4]
-
-    # Handle directory navigation builtins
-    if base_name in ("cd", "chdir", "set-location"):
-        return True, "Directory navigation permitted."
-
-    # 3. Whitelist check on binary
-    if base_name not in ALLOWED_BINARIES:
-        return False, f"Binary '{base_name}' is not in the StoneSage coding and diagnostics whitelist."
-
-    # 4. Systemctl scope check
-    if base_name == "systemctl":
-        cmd_tokens = cmd.split()[1:]
-        if not cmd_tokens:
-            return False, "systemctl requires a subcommand (e.g. status, is-active)."
-        subcmd = cmd_tokens[0].lower()
+            return False, f"Command contains forbidden destructive pattern matching '{pattern}'.", []
+    try:
+        argv = shlex.split(cmd, posix=(os.name != "nt"))
+    except ValueError as e:
+        return False, f"Cannot parse the command ({e}).", []
+    if os.name == "nt":      # non-POSIX split keeps the quote marks
+        argv = [a[1:-1] if len(a) > 1 and a[0] == a[-1] and a[0] in "\"'" else a for a in argv]
+    if not argv:
+        return False, "Command string cannot be empty.", []
+    program = argv[0]
+    if "/" in program or "\\" in program:
+        return False, "Name the program without a path (it is looked up on PATH).", []
+    base = program.lower()
+    if base.endswith(".exe"):
+        base = base[:-4]
+    if base not in ALLOWED_BINARIES:
+        return False, f"Binary '{base}' is not in the StoneSage coding and diagnostics whitelist.", []
+    banned = INLINE_CODE_FLAGS.get(base, set())
+    for a in argv[1:]:
+        low = a.lower()
+        if low in banned or any(low.startswith(f + "=") for f in banned if f.startswith("--")) \
+                or (base in ("python", "python3", "py") and low.startswith("-c")):
+            return False, f"'{a}' runs code or another program from inside '{base}'; not allowed here.", []
+    if base == "systemctl":
+        tokens = [a for a in argv[1:] if not a.startswith("-")]
+        if not tokens:
+            return False, "systemctl requires a subcommand (e.g. status, is-active).", []
+        subcmd = tokens[0].lower()
         if subcmd not in ALLOWED_SYSTEMCTL_ACTIONS:
-            return False, f"systemctl action '{subcmd}' is not permitted. Allowed: {ALLOWED_SYSTEMCTL_ACTIONS}"
+            return False, f"systemctl action '{subcmd}' is not permitted. Allowed: {sorted(ALLOWED_SYSTEMCTL_ACTIONS)}", []
         if subcmd == "restart":
-            # Must be one of the permitted cluster services
-            target_svc = cmd_tokens[1].lower() if len(cmd_tokens) > 1 else ""
-            if target_svc not in ALLOWED_SYSTEMCTL_SERVICES:
-                return False, f"Restarting service '{target_svc}' is not permitted. Allowed: {ALLOWED_SYSTEMCTL_SERVICES}"
+            targets = [t.lower() for t in tokens[1:]]
+            if len(targets) != 1 or targets[0] not in ALLOWED_SYSTEMCTL_SERVICES:
+                return False, f"Restarting {targets or 'nothing'} is not permitted. Allowed: {sorted(ALLOWED_SYSTEMCTL_SERVICES)}", []
+    return True, "Command approved by coding and development whitelist.", argv
 
-    # 5. Working Directory Scoping Check (if allowed_roots supplied)
-    if allowed_roots and cwd:
-        abs_cwd = os.path.abspath(cwd).lower()
-        matched = any(abs_cwd.startswith(os.path.abspath(r).lower()) for r in allowed_roots)
-        if not matched:
+
+def validate_terminal_command(command_str: str, cwd: str = "", allowed_roots: Optional[List[str]] = None) -> Tuple[bool, str]:
+    """Is this command allowed? -> (is_allowed, reason). `cd` and friends are builtins the caller handles (there is no shell
+    to run them). When `allowed_roots` is given the working directory must lie inside one of them (realpath containment)."""
+    first = (command_str or "").strip().split(None, 1)
+    if first and first[0].lower() in NAVIGATION and not any(c in SHELL_META for c in command_str):
+        return True, "Directory navigation permitted."
+    ok, reason, argv = parse_command(command_str)
+    if not ok:
+        return False, reason
+    if allowed_roots:
+        roots = [os.path.realpath(r) for r in allowed_roots]
+        if cwd and not _inside(os.path.realpath(cwd), roots):
             return False, f"Execution path '{cwd}' is outside authorized workspace roots."
+        outside = path_args_outside(argv, cwd or os.getcwd(), roots)
+        if outside:
+            return False, f"'{outside}' is outside the authorized workspace roots."
+    return True, reason
 
-    return True, "Command approved by coding and development whitelist."
+
+def _inside(real: str, roots: List[str]) -> bool:
+    return any(real == r or real.startswith(r.rstrip("/\\") + os.sep) for r in roots)
+
+
+def path_args_outside(argv: List[str], cwd: str, roots: List[str]) -> str:
+    """The first argument that names a place (has a path separator, starts with ~ or is '..') outside the roots, or ''.
+    Symlinks are followed (realpath), so a link inside the workspace does not lead out of it."""
+    for a in argv[1:]:
+        candidate = a.split("=", 1)[1] if a.startswith("-") and "=" in a else a
+        if candidate.startswith("-") or not candidate:
+            continue
+        if not (("/" in candidate) or ("\\" in candidate) or candidate.startswith("~") or candidate == ".."
+                or os.path.isabs(candidate)):
+            continue
+        real = os.path.realpath(os.path.join(cwd, os.path.expanduser(candidate)))
+        if not _inside(real, roots):
+            return a
+    return ""
+
+
+def run_command(command_str: str, cwd: str, timeout: float = 30.0):
+    """Validate and run one allowed command with shell=False. Returns the subprocess.CompletedProcess; raises ValueError
+    (the reason) when the command is refused, and subprocess.TimeoutExpired / OSError as usual."""
+    import subprocess
+    ok, reason, argv = parse_command(command_str)
+    if not ok:
+        raise ValueError(reason)
+    return subprocess.run(argv, shell=False, cwd=cwd, capture_output=True, text=True, timeout=timeout)

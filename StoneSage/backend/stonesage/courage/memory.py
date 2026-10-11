@@ -64,18 +64,27 @@ def parse_notes(text: str) -> List[str]:
 class ConversationMemory:
     def __init__(self, path: Optional[str], embed: Callable[[List[str]], List[List[float]]],
                  llm: Callable[[str], str], clock: Callable[[], float] = time.time,
-                 on_write: Optional[Callable[[Dict[str, Any]], None]] = None):
+                 on_write: Optional[Callable[[Dict[str, Any]], None]] = None, extract: str = EXTRACT):
         """embed: texts -> vectors (BGE on :8003). llm: prompt -> text (the coordinator, no tools).
-        on_write: gets one trace record per extraction (kind 'memory')."""
+        on_write: gets one trace record per extraction (kind 'memory'). extract: the extraction prompt ({user} and
+        {reply} are filled in); another agent brings its own."""
         self.path, self.embed, self.llm, self.clock, self.on_write = path, embed, llm, clock, on_write
+        self.extract = extract
         self._lock = threading.Lock()
         self.notes: List[Dict[str, Any]] = []
-        if path:
-            try:
-                with open(path, encoding="utf-8") as f:
-                    self.notes = json.load(f).get("notes", [])
-            except (OSError, ValueError):
-                pass
+        self.reload()
+
+    def reload(self) -> None:
+        """Read the notes file again (a soul was imported over it, or a person edited it)."""
+        if not self.path:
+            return
+        try:
+            with open(self.path, encoding="utf-8") as f:
+                notes = json.load(f).get("notes", [])
+        except (OSError, ValueError, AttributeError):
+            return
+        with self._lock:
+            self.notes = notes if isinstance(notes, list) else []
 
     # ---- storage ------------------------------------------------------------------
     def _save(self) -> None:
@@ -151,7 +160,7 @@ class ConversationMemory:
         rec: Dict[str, Any] = {"kind": "memory", "at": round(t0, 3), "session": session, "outcome": "nothing",
                                "stored": [], "refreshed": 0, "triggers": []}
         try:
-            prompt = EXTRACT.replace("{user}", user[:1500]).replace("{reply}", reply[:1500])
+            prompt = self.extract.replace("{user}", user[:1500]).replace("{reply}", reply[:1500])
             notes = parse_notes(self.llm(prompt))
             for text in notes:
                 res = self.add(text, session)

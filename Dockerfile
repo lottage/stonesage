@@ -32,5 +32,5 @@ USER stonesage
 VOLUME ["/config", "/data"]
 EXPOSE 8888
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=5 \
-    CMD ["python", "-c", "import socket; socket.create_connection(('127.0.0.1', 8888), 3).close()"]
+    CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8888/api/health', timeout=3)"]
 ENTRYPOINT ["python", "/usr/local/bin/stonesage-entrypoint.py"]

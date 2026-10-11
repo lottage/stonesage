@@ -286,39 +286,31 @@ def tool_store_to_obsidian(
 
 
 def tool_execute_command(command: str, cwd: str = "") -> Dict[str, Any]:
-    """Executes a terminal/shell command with safety validation."""
+    """Runs one allowed command (stonesage/command_whitelist.py): argv only, never a shell; the check fails CLOSED (a command
+    that cannot be checked is not run), and the working directory and any path in the arguments stay inside the workspace."""
     cmd = (command or "").strip()
     if not cmd:
         return {"ok": False, "error": "Command string is required."}
-
+    root = os.path.realpath(WORKSPACE_ROOT)
+    exec_cwd = os.path.realpath(cwd) if cwd else root
     try:
-        from stonesage.command_whitelist import validate_terminal_command
-        is_allowed, reason = validate_terminal_command(cmd, cwd=cwd)
+        from stonesage.command_whitelist import validate_terminal_command, run_command
+        is_allowed, reason = validate_terminal_command(cmd, cwd=exec_cwd, allowed_roots=[root])
         if not is_allowed:
             return {"ok": False, "error": f"Command rejected by security guardrails: {reason}"}
-    except Exception:
-        pass
-
-    exec_cwd = cwd or WORKSPACE_ROOT
-    try:
-        res = subprocess.run(
-            cmd,
-            shell=True,
-            cwd=exec_cwd,
-            capture_output=True,
-            text=True,
-            timeout=30
-        )
-        return {
-            "ok": res.returncode == 0,
-            "returncode": res.returncode,
-            "stdout": res.stdout[:2000],
-            "stderr": res.stderr[:1000]
-        }
+        res = run_command(cmd, exec_cwd, timeout=30)
+    except ValueError as e:
+        return {"ok": False, "error": f"Command rejected by security guardrails: {e}"}
     except subprocess.TimeoutExpired:
         return {"ok": False, "error": "Command execution timed out (30s limit)."}
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
+    except Exception as e:               # includes the whitelist failing to import: nothing runs
+        return {"ok": False, "error": f"Command not run: {type(e).__name__}: {e}"}
+    return {
+        "ok": res.returncode == 0,
+        "returncode": res.returncode,
+        "stdout": res.stdout[:2000],
+        "stderr": res.stderr[:1000]
+    }
 
 
 def tool_get_cluster_status() -> Dict[str, Any]:
@@ -1006,12 +998,16 @@ class ToolRegistry:
         description: str,
         parameters: Dict[str, Any],
         python_code: str = "",
-        amem_card: Optional[str] = None
+        amem_card: Optional[str] = None,
+        allow_code: bool = False
     ) -> Dict[str, Any]:
-        """Registers a custom or operator-defined tool."""
+        """Registers a custom or operator-defined tool. `python_code` is exec()d in this process, so it is refused unless the
+        caller says code is allowed (the server passes config features.code_tools)."""
         clean_name = re.sub(r"[^a-zA-Z0-9_-]", "_", name).strip().lower()
 
         handler = None
+        if python_code and python_code.strip() and not allow_code:
+            return {"ok": False, "error": "Tools with Python code are off (set features.code_tools to true in config.json)."}
         if python_code and python_code.strip():
             try:
                 local_ns = {}
@@ -1056,6 +1052,8 @@ class ToolRegistry:
             return {"ok": False, "error": "URL parameter is required."}
 
         try:
+            from lodestone.urlcheck import check_fetch_url
+            check_fetch_url(clean_url)           # http(s) only, never loopback / link-local (file:// would read local files)
             req = urllib.request.Request(clean_url, headers={"User-Agent": "StoneSage/4.0 ToolIngester"})
             with urllib.request.urlopen(req, timeout=10.0) as resp:
                 raw_data = resp.read().decode("utf-8", errors="replace")

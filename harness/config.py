@@ -28,6 +28,7 @@ class NodeEndpoint:
     active_model: Optional[str] = None
     active_context: int = 4096
     status: str = "unknown"
+    api_key: str = ""         # sent as `Authorization: Bearer` (StoneSage's Boost proxy needs the server key)
 
 def _stonesage_backend_dir() -> str:
     """StoneSage/backend next to this repo's harness/ (dev), or the backend dir harness/ is installed in (LXC)."""
@@ -194,7 +195,8 @@ class FleetConfig:
         if boost_cfg.get("enabled") and (boost_cfg.get("surfaces") or {}).get("loops"):
             ss_url = (os.environ.get("STONESAGE_URL") or boost_cfg.get("stonesage_url") or ep.url("stonesage", cfg)).rstrip("/")
             self.nodes["boost"] = NodeEndpoint(node_id="boost", name="Boost (free cloud pool)", base_url=ss_url + "/api/boost/v1",
-                                               role="boost", slots=1, device_name="free cloud pool", active_model="boost:loops")
+                                               role="boost", slots=1, device_name="free cloud pool", active_model="boost:loops",
+                                               api_key=os.environ.get("STONESAGE_API_KEY", "").strip())
         self.active_node_id: str = "node1_primary"
 
     def operator_name(self) -> str:

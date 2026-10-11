@@ -12,6 +12,14 @@ from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
 from ..config import fleet_config
+
+
+def _ssh_target_ok(target: str) -> str:
+    """user@host as given by the config, or ValueError when either part could be read as an ssh option."""
+    from lodestone import endpoints
+    return endpoints.check_ssh_target(target)
+
+
 from ..core.nudge_tool import harness_nudge
 from ..security.policy_engine import policy_engine
 from ..data_fabric.valkey_amem import valkey_amem
@@ -1032,7 +1040,7 @@ class CommandRegistry:
 
         def run_remote_ssh(cmd: str) -> subprocess.CompletedProcess:
             return subprocess.run(
-                ["ssh", "-n", "-o", "BatchMode=yes", f"{vm_user}@{vm_host}", cmd],
+                ["ssh", "-n", "-o", "BatchMode=yes", "--", _ssh_target_ok(f"{vm_user}@{vm_host}"), cmd],
                 capture_output=True,
                 text=True,
                 encoding="utf-8",

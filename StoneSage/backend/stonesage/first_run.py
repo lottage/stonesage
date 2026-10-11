@@ -115,6 +115,10 @@ def backup_file(path: str) -> Optional[str]:
         return None
     backup = f"{path}.bak-{time.strftime('%Y%m%d-%H%M%S')}"
     shutil.copyfile(path, backup)
+    try:
+        os.chmod(backup, 0o600)          # the copy holds the same tokens as the file
+    except OSError:
+        pass
     return backup
 
 
@@ -122,7 +126,8 @@ def write(cfg: Dict[str, Any], path: str = CONFIG_FILE) -> Optional[str]:
     """Write config.json; the old one is kept as config.json.bak-<time>. Returns the backup's path (None: no old file)."""
     backup = backup_file(path)
     tmp = path + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)      # owner-only from the first byte
+    with os.fdopen(fd, "w", encoding="utf-8") as f:
         json.dump(cfg, f, indent=2, ensure_ascii=False)
         f.write("\n")
     os.replace(tmp, path)

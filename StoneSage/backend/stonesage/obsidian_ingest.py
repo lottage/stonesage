@@ -314,6 +314,12 @@ class ObsidianIngestEngine:
         if not clean_url.startswith(("http://", "https://")):
             return {"ok": False, "error": "Invalid URL. Must start with http:// or https://"}
 
+        try:
+            from lodestone.urlcheck import check_fetch_url
+            check_fetch_url(clean_url)        # never the server's own loopback, a link-local / metadata address, or a non-web scheme
+        except ValueError as e:
+            return {"ok": False, "error": f"That URL is not fetched: {e}"}
+
         logger.info(f"Ingesting URL: {clean_url}")
         req = urllib.request.Request(
             clean_url,

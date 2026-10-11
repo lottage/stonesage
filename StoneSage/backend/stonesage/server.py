@@ -19,6 +19,8 @@ if hasattr(sys.stderr, 'reconfigure'):
     sys.stderr.reconfigure(encoding='utf-8')
 
 import json
+import fnmatch
+import shlex
 import time
 import threading
 from typing import List, Dict, Any, Optional, Tuple
@@ -57,7 +59,15 @@ except ImportError:
         def ingest_chunk(self, chunk: str): return False, None
 
 # Safety rules: imported plainly, never with a permissive fallback (a missing module must stop the server, not open it up)
-from stonesage.command_whitelist import validate_terminal_command
+from stonesage.command_whitelist import validate_terminal_command, run_command
+from stonesage import auth
+from stonesage import paths
+MODEL_FILE_RE = r"[A-Za-z0-9][A-Za-z0-9._-]{0,200}\.gguf"        # a model file name on the engine host: nothing a shell could read
+MAX_UPLOAD_BYTES = 25 * 1024 * 1024
+UPLOAD_INLINE_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".webp"}          # shown in the page; everything else downloads
+UPLOAD_ALLOWED_EXTS = UPLOAD_INLINE_EXTS | {".txt", ".md", ".json", ".csv", ".pdf", ".wav", ".mp3", ".webm", ".ogg", ".m4a", ".bin"}
+MAX_BODY_BYTES = 64 * 1024 * 1024    # the largest thing a client may send (a soul archive is capped at 60 MB in agent_api.py)
+APP_VERSION = "0.1.0"        # shown by the public /api/health; nothing else about this install is
 try:
     from lodestone.model_downloader import model_download_manager, normalize_download_url
 except ImportError:
@@ -451,6 +461,33 @@ def get_workspace_roots() -> List[Dict[str, Any]]:
         save_config(cfg)
     return custom_roots
 
+SENSITIVE_FILE_PATTERNS = ("config.json", "config.json.*", ".env", "*.env", "secrets.*", "*.pem", "*.key", "id_rsa*", "id_ed25519*",
+                           "id_ecdsa*", "authorized_keys", "known_hosts", "*credentials*", "*.bak-*", "*.kdbx")
+SENSITIVE_DIRS = (".ssh", ".gnupg", ".aws", ".kube", ".docker")
+
+
+def safe_git_url(url: str) -> bool:
+    """A repository URL `git clone` may be given: https://, ssh:// or git@host:path. Never something that starts with '-'
+    (an option), never file://, ext:: or a local path."""
+    u = str(url or "").strip()
+    if not u or u.startswith("-") or any(c in u for c in " \t\r\n\0"):
+        return False
+    return bool(re.match(r"^(https://|ssh://)[A-Za-z0-9][^\s]*$", u) or re.match(r"^[A-Za-z0-9._-]+@[A-Za-z0-9.-]+:[^\s]+$", u))
+
+
+def resolve_workspace_path(req_path: str) -> str:
+    """A file path from the browser, as a real path inside one of the configured workspace roots (relative paths are taken
+    from the active workspace). ValueError when it is outside every root (`..`, a symlink out, another drive) or names a
+    file that holds secrets. This is the only way the file editor routes reach the disk."""
+    full = paths.contained_in_any(req_path, [r.get("path") for r in get_workspace_roots() if isinstance(r, dict)],
+                                  cwd=ACTIVE_WORKSPACE_DIR)
+    parts = [p.lower() for p in full.replace("\\", "/").split("/")]
+    name = parts[-1]
+    if any(fnmatch.fnmatch(name, pat) for pat in SENSITIVE_FILE_PATTERNS) or any(d in parts[:-1] for d in SENSITIVE_DIRS):
+        raise ValueError("that file holds secrets; the file editor does not serve it")
+    return full
+
+
 def save_workspace_roots(roots: List[Dict[str, Any]]):
     cfg = load_config()
     cfg["workspace_roots"] = roots
@@ -630,8 +667,7 @@ def load_config() -> Dict[str, Any]:
     return {}
 
 def save_config(cfg: Dict[str, Any]):
-    with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-        json.dump(cfg, f, indent=2)
+    auth.write_private_json(CONFIG_FILE, cfg)      # atomic, mode 0600: this file holds every token and the login key
 
 def sync_qdrant_dossier_review(sample_id: str, action: str, notes: str = "") -> bool:
     """Synchronizes human review/approval/quarantine for a dossier directly into Qdrant point payload."""
@@ -1850,6 +1886,8 @@ def get_hardware_capabilities() -> Dict[str, Any]:
     }
 
 def apply_llama_parameters(service_name: str, port: int, alias: str, params: Dict[str, Any]) -> tuple:
+    if not re.fullmatch(r"[A-Za-z0-9_.@-]+\.service", str(service_name)) or not isinstance(port, int):
+        return False, "Refused: not a service name"
     try:
         get_cmd = endpoints.ssh_cmd(config, f"cat /etc/systemd/system/{service_name}")
         res = subprocess.run(get_cmd, capture_output=True, text=True, timeout=10)
@@ -2008,9 +2046,13 @@ def apply_llama_parameters(service_name: str, port: int, alias: str, params: Dic
             for s in stops:
                 cmd_parts.extend(["-r", str(s)])
         if params.get("custom_flags"):
-            cmd_parts.append(str(params["custom_flags"]).strip())
+            cmd_parts.extend(shlex.split(str(params["custom_flags"])))      # words, so each one is quoted below
 
-        new_exec_start = " ".join(cmd_parts)
+        from lodestone.model_loader import unit_token      # control characters refused, % and $ doubled, shell-quoted
+        try:
+            new_exec_start = " ".join(unit_token(str(p)) for p in cmd_parts)
+        except ValueError as e:
+            return False, f"Refused: {e}"
 
         # replace the whole (possibly multi-line) ExecStart block; everything else in the unit stays as it was
         old_lines = current_content.splitlines()
@@ -2437,7 +2479,7 @@ def get_trace_log():
     return _trace_log
 
 
-def _courage_memory(memories_path: str, coordinator_url: str):
+def _courage_memory(memories_path: str, coordinator_url: str, extract: Optional[str] = None):
     """Courage's conversational memory (courage/memory.py): local embedder for recall, the coordinator to decide what
     is worth keeping. Nothing leaves the house."""
     from stonesage.courage.memory import ConversationMemory
@@ -2459,7 +2501,7 @@ def _courage_memory(memories_path: str, coordinator_url: str):
             return json.load(r)["choices"][0]["message"]["content"] or ""
 
     return ConversationMemory(memories_path, embed, llm,
-                              on_write=lambda rec: get_trace_log().write(rec))
+                              on_write=lambda rec: get_trace_log().write(rec), **({"extract": extract} if extract else {}))
 
 
 def _courage_runs_on() -> Optional[str]:
@@ -2598,7 +2640,7 @@ def get_courage_agent():
             # PendingActions, same execute(); either channel can answer, whichever taps first.
             watch_cfg = config.get("watch_bridge", {})
             if watch_cfg.get("url") and watch_cfg.get("token"):
-                from stonesage.courage.tools import ALWAYS_CONFIRM
+                from stonesage.courage.tools import always_confirm
                 from stonesage.courage.watch_client import WatchBridge
                 watch = WatchBridge(watch_cfg["url"], watch_cfg["token"])
                 project = watch_cfg.get("project", "stonesage")
@@ -2610,7 +2652,7 @@ def get_courage_agent():
                 def _on_approval(session_id, action, _existing=existing_on_approval, _watch=watch, _project=project):
                     pushed = bool(_existing(session_id, action)) if _existing else False
                     args = action.get("args") or {}
-                    destructive = action.get("name") == "ha_call" and (args.get("domain"), args.get("service")) in ALWAYS_CONFIRM
+                    destructive = action.get("name") == "ha_call" and always_confirm(args.get("domain", ""), args.get("service", ""), args.get("entity_id", ""))
                     watch_id = _watch.ask(f"Shall I {action['summary']}?", ["Yes", "No"],
                                           project=_project, destructive=destructive)
                     if watch_id:
@@ -2722,6 +2764,9 @@ def save_user_profiles(profiles: Dict[str, Any]) -> bool:
         return False
 
 class StoneSageHandler(http.server.SimpleHTTPRequestHandler):
+    timeout = 120        # a client that stops sending/reading is dropped, not held forever (slowloris)
+    principal = None     # who the gate decided this request is (stonesage/auth.py); None on a public route
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=FRONTEND_DIR, **kwargs)
 
@@ -2736,17 +2781,49 @@ class StoneSageHandler(http.server.SimpleHTTPRequestHandler):
             self.send_header("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0")
             self.send_header("Pragma", "no-cache")
             self.send_header("Expires", "0")
+        # the page may not be framed by another site (clickjacking of the approval buttons), nor sniffed into a script
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "SAMEORIGIN")
+        self.send_header("Content-Security-Policy", "frame-ancestors 'self'")
+        self.send_header("Referrer-Policy", "same-origin")
         super().end_headers()
 
+    def list_directory(self, path):
+        self.send_error(404, "No such file")      # a folder without an index is not a listing for anyone
+        return None
+
+    def _gate(self, method: str) -> bool:
+        """The one chokepoint (stonesage/auth.py): True = go on, False = already answered (401, 403, 404 for a feature that is off...)."""
+        return auth.gate(self, method, config, routes=app_ctx.routes, frontend_dir=FRONTEND_DIR,
+                         is_apk=lambda p: is_apk_request(p, p.strip().rstrip("/")))
+
+    def _approval_key(self, client_id=None) -> str:
+        """Where a pending approval lives: this caller + the id it chose (a reserved or missing id becomes its address)."""
+        return auth.approval_key(self, client_id)
+
+    def _auth_route(self, method: str, path: str, body: Dict[str, Any]) -> bool:
+        """Login, logout, who-am-I and the minimal health answer (the gate lets the first three through; whoami needs a login)."""
+        if path == "/api/health" and method in ("GET", "HEAD"):
+            auth.reply(self, 200, {"ok": True, "version": APP_VERSION})
+        elif path == "/api/auth/whoami" and method == "GET":
+            auth.whoami(self)
+        elif path == "/api/auth/login" and method == "POST":
+            auth.login(self, config, body)
+        elif path == "/api/auth/logout" and method == "POST":
+            auth.logout(self)
+        else:
+            return False
+        return True
+
     def do_OPTIONS(self):
-        self.send_response(204)
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS, HEAD")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, Range")
-        self.end_headers()
+        self._gate("OPTIONS")       # answers 204 with no CORS headers (or 421 for a host name that is not ours)
 
     def do_HEAD(self):
+        if not self._gate("HEAD"):
+            return
         parsed = urllib.parse.urlparse(self.path)
+        if self._auth_route("HEAD", parsed.path, {}):
+            return
         path = parsed.path
         clean_path = path.strip().rstrip("/")
         if is_apk_request(path, clean_path):
@@ -2759,7 +2836,6 @@ class StoneSageHandler(http.server.SimpleHTTPRequestHandler):
                 self.send_header("Content-Length", str(total_size))
                 self.send_header("Accept-Ranges", "bytes")
                 self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
-                self.send_header("Access-Control-Allow-Origin", "*")
                 self.send_header("Connection", "close")
                 self.end_headers()
                 return
@@ -2775,7 +2851,6 @@ class StoneSageHandler(http.server.SimpleHTTPRequestHandler):
                 self.send_header("Content-Disposition", f'attachment; filename="{fname}"')
                 self.send_header("Content-Length", str(total_size))
                 self.send_header("Accept-Ranges", "bytes")
-                self.send_header("Access-Control-Allow-Origin", "*")
                 self.send_header("Connection", "close")
                 self.end_headers()
                 return
@@ -2785,12 +2860,13 @@ class StoneSageHandler(http.server.SimpleHTTPRequestHandler):
                 return
         super().do_HEAD()
 
-    def _handle_courage_chat(self, messages: List[Dict[str, Any]], session_id: Optional[str], agent_id: str):
+    def _handle_courage_chat(self, messages: List[Dict[str, Any]], session_id: Optional[str], agent_id: str, agent=None):
         """Courage tool loop (Phase 2): streams tool events and the answer as SSE; actions wait for approval.
-        Replaces keyword grounding and keyword-triggered device actions for the Courage agent."""
+        Replaces keyword grounding and keyword-triggered device actions for the Courage agent. `agent`: another agent's
+        loop (stonesage/agents.py, e.g. Atlas); default Computer's."""
         history = [m for m in messages if m.get("role") in ("user", "assistant")]
         user_text = next((m.get("content", "") for m in reversed(history) if m.get("role") == "user"), "")
-        approval_key = session_id or f"ip:{self.client_address[0]}"
+        approval_key = self._approval_key(session_id)      # this caller + its own id: nobody else can answer the question
 
         if session_id and user_text:
             try:
@@ -2803,14 +2879,13 @@ class StoneSageHandler(http.server.SimpleHTTPRequestHandler):
         self.send_header("Content-Type", "text/event-stream; charset=utf-8")
         self.send_header("Cache-Control", "no-cache")
         self.send_header("Connection", "close")
-        self.send_header("Access-Control-Allow-Origin", "*")
         self.end_headers()
 
         active_session_state.start(prompt=user_text, model="coordinator", agent_id=agent_id, session_id=session_id)
         content, tool_events, t0, usage = [], [], time.time(), {}
         client_gone = False
         try:
-            for chunk in get_courage_agent().sse(history, approval_key):
+            for chunk in (agent or get_courage_agent()).sse(history, approval_key):
                 if not client_gone:
                     try:
                         self.wfile.write(chunk.encode("utf-8"))
@@ -2979,7 +3054,12 @@ class StoneSageHandler(http.server.SimpleHTTPRequestHandler):
             from lodestone import config_mask
             cfg = load_config()
             cfg.setdefault("boost", {})
-            deep_update(cfg["boost"], config_mask.drop_masked(upd))
+            upd = config_mask.drop_masked(upd)
+            errs = config_mask.destination_errors(cfg["boost"], upd, "boost.")
+            if errs:      # a provider's address / tier moves only together with its key, entered again
+                self.send_json({"ok": False, "error": errs[0], "errors": errs}, 400)
+                return
+            deep_update(cfg["boost"], upd)
             save_config(cfg)
             self.send_json({"ok": True, **r.status()})
         elif path == "/api/boost/test":
@@ -3063,17 +3143,17 @@ class StoneSageHandler(http.server.SimpleHTTPRequestHandler):
         body = json.dumps(data).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
 
     def read_json_body(self) -> Dict[str, Any]:
+        self._raw_body = b""          # kept for routes that take bytes, not JSON (agent_api: a soul archive)
         try:
             length = int(self.headers.get("Content-Length", 0))
             if length > 0:
-                raw = self.rfile.read(length).decode("utf-8")
-                return json.loads(raw)
+                self._raw_body = self.rfile.read(length)
+                return json.loads(self._raw_body.decode("utf-8"))
         except Exception:
             pass
         return {}
@@ -3088,6 +3168,10 @@ class StoneSageHandler(http.server.SimpleHTTPRequestHandler):
         If the route had already started its answer (a stream), the error is only logged."""
         self._responded = False
         try:
+            if not self._gate("GET"):
+                return
+            if self._auth_route("GET", urllib.parse.urlparse(self.path).path, {}):
+                return
             self._do_get()
         except (BrokenPipeError, ConnectionResetError):
             pass                       # the client went away
@@ -3136,7 +3220,6 @@ class StoneSageHandler(http.server.SimpleHTTPRequestHandler):
                         self.send_header("Content-Length", str(content_length))
                         self.send_header("Accept-Ranges", "bytes")
                         self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
-                        self.send_header("Access-Control-Allow-Origin", "*")
                         self.send_header("Connection", "close")
                         self.end_headers()
 
@@ -3161,7 +3244,6 @@ class StoneSageHandler(http.server.SimpleHTTPRequestHandler):
                         self.send_header("Content-Length", str(total_size))
                         self.send_header("Accept-Ranges", "bytes")
                         self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
-                        self.send_header("Access-Control-Allow-Origin", "*")
                         self.send_header("Connection", "close")
                         self.end_headers()
 
@@ -3477,7 +3559,6 @@ class StoneSageHandler(http.server.SimpleHTTPRequestHandler):
                 self.send_header("Content-Type", "application/x-jsonlines" if fname.endswith(".jsonl") else "application/json")
                 self.send_header("Content-Disposition", f'attachment; filename="{fname}"')
                 self.send_header("Content-Length", str(total_size))
-                self.send_header("Access-Control-Allow-Origin", "*")
                 self.send_header("Connection", "close")
                 self.end_headers()
                 with open(fpath, "rb") as f:
@@ -3594,7 +3675,6 @@ class StoneSageHandler(http.server.SimpleHTTPRequestHandler):
                     self.send_header("Content-Type", "application/gzip")
                     self.send_header("Content-Disposition", f'attachment; filename="{fname}"')
                     self.send_header("Content-Length", str(total_size))
-                    self.send_header("Access-Control-Allow-Origin", "*")
                     self.end_headers()
                     with open(tar_path, "rb") as f:
                         while True:
@@ -3758,7 +3838,6 @@ class StoneSageHandler(http.server.SimpleHTTPRequestHandler):
             if content:
                 self.send_response(200)
                 self.send_header("Content-Type", "text/markdown; charset=utf-8")
-                self.send_header("Access-Control-Allow-Origin", "*")
                 self.end_headers()
                 self.wfile.write(content.encode("utf-8"))
             else:
@@ -3899,7 +3978,10 @@ class StoneSageHandler(http.server.SimpleHTTPRequestHandler):
                     vault_candidates.append(cand_p)
 
             for vc in vault_candidates:
-                full_path = os.path.join(vc, norm_rel)
+                try:
+                    full_path = paths.safe_join(vc, norm_rel)       # `..`, a drive or a symlink out of the vault: skipped
+                except ValueError:
+                    continue
                 if not (os.path.exists(full_path) and os.path.isfile(full_path)):
                     # Case-insensitive or filename search
                     for root, dirs, files in os.walk(vc):
@@ -4176,14 +4258,18 @@ class StoneSageHandler(http.server.SimpleHTTPRequestHandler):
             filename = os.path.basename(path)
             file_path = os.path.join(UPLOADS_DIR, filename)
             if os.path.exists(file_path) and os.path.isfile(file_path):
-                ctype, _ = mimetypes.guess_type(file_path)
+                import mimetypes as _mimetypes      # (a plain `mimetypes` is a local of this method: another branch imports it)
+                ctype, _ = _mimetypes.guess_type(file_path)
                 ctype = ctype or "application/octet-stream"
                 size = os.path.getsize(file_path)
                 self.send_response(200)
+                if os.path.splitext(filename)[1].lower() not in UPLOAD_INLINE_EXTS:
+                    ctype = "application/octet-stream"       # anything that is not a plain picture is a download
+                    self.send_header("Content-Disposition", "attachment")
                 self.send_header("Content-Type", ctype)
                 self.send_header("Content-Length", str(size))
-                self.send_header("Access-Control-Allow-Origin", "*")
-                self.send_header("Cache-Control", "public, max-age=86400")
+                self.send_header("Cache-Control", "private, max-age=86400")
+                self.send_header("Content-Security-Policy", "sandbox; default-src 'none'")   # a script in a file never runs here
                 self.end_headers()
                 with open(file_path, "rb") as f:
                     self.wfile.write(f.read())
@@ -4195,8 +4281,13 @@ class StoneSageHandler(http.server.SimpleHTTPRequestHandler):
         elif path == "/api/workspace/tree":
             requested_dir = urllib.parse.parse_qs(parsed.query).get("dir", [""])[0]
             if requested_dir:
-                req_abs = os.path.abspath(requested_dir)
-                if os.path.exists(req_abs) and os.path.isdir(req_abs):
+                try:
+                    req_abs = paths.contained_in_any(requested_dir, [r.get("path") for r in get_workspace_roots()],
+                                                     cwd=ACTIVE_WORKSPACE_DIR)
+                except ValueError as ex:
+                    self.send_json({"ok": False, "error": str(ex)}, 403)
+                    return
+                if os.path.isdir(req_abs):
                     ACTIVE_WORKSPACE_DIR = req_abs
 
             current_dir = ACTIVE_WORKSPACE_DIR
@@ -4262,10 +4353,11 @@ class StoneSageHandler(http.server.SimpleHTTPRequestHandler):
             if not req_path:
                 self.send_json({"ok": False, "error": "Missing path parameter"}, 400)
                 return
-            if os.path.isabs(req_path):
-                full_path = os.path.abspath(req_path)
-            else:
-                full_path = os.path.abspath(os.path.join(ACTIVE_WORKSPACE_DIR, req_path))
+            try:
+                full_path = resolve_workspace_path(req_path)
+            except ValueError as ex:
+                self.send_json({"ok": False, "error": str(ex)}, 403)
+                return
 
             if not os.path.exists(full_path) or not os.path.isfile(full_path):
                 self.send_json({"ok": False, "error": f"File not found: {req_path}"}, 404)
@@ -4285,7 +4377,6 @@ class StoneSageHandler(http.server.SimpleHTTPRequestHandler):
                     self.send_response(200)
                     self.send_header("Content-Type", ctype)
                     self.send_header("Content-Length", str(len(data)))
-                    self.send_header("Access-Control-Allow-Origin", "*")
                     self.end_headers()
                     self.wfile.write(data)
                     return
@@ -4770,6 +4861,9 @@ class StoneSageHandler(http.server.SimpleHTTPRequestHandler):
                 self.send_json({"ok": False, "error": "Missing dossier ID"}, 400)
                 return
             content = ""
+            if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._ -]{0,120}", d_id) or ".." in d_id:
+                self.send_json({"ok": False, "error": "Invalid dossier ID"}, 400)      # an id is a file name, never a path
+                return
             local_paths = [
                 f"../obsidian/Autonomous Thinking/Explorations/{d_id}.md",
                 f"../obsidian/Autonomous Thinking/{d_id}.md",
@@ -4869,9 +4963,21 @@ class StoneSageHandler(http.server.SimpleHTTPRequestHandler):
         global ACTIVE_WORKSPACE_DIR, ACTIVE_GIT_REPO_DIR
         self._responded = False
         try:
+            if not self._gate("POST"):
+                return
+            try:
+                too_big = int(self.headers.get("Content-Length", 0) or 0) > MAX_BODY_BYTES
+            except ValueError:
+                too_big = True
+            if too_big:      # read_json_body would otherwise hold whatever length the client claims in memory
+                auth.reply(self, 413, {"ok": False, "error": "request body too large"})
+                self.close_connection = True
+                return
             parsed = urllib.parse.urlparse(self.path)
             path = parsed.path
             body = self.read_json_body()
+            if self._auth_route("POST", path, body):
+                return
 
             app_route = app_ctx.routes.find("POST", path)   # routes registered by apps (apps.py), before the platform's own
             if app_route:
@@ -4885,10 +4991,10 @@ class StoneSageHandler(http.server.SimpleHTTPRequestHandler):
 
             elif path == "/api/watch/reply":
                 import secrets as _secrets
-                from stonesage.courage.tools import ALWAYS_CONFIRM
+                from stonesage.courage.tools import always_confirm
                 token = (config.get("watch_bridge", {}) or {}).get("token", "")
-                auth = self.headers.get("Authorization", "")
-                if not token or not _secrets.compare_digest(auth, f"Bearer {token}"):
+                presented = self.headers.get("Authorization", "")
+                if not token or not _secrets.compare_digest(presented.encode("utf-8", "replace"), f"Bearer {token}".encode("utf-8")):
                     self.send_json({"ok": False, "error": "unauthorized"}, 401)
                     return
                 agent = get_courage_agent()
@@ -4897,7 +5003,7 @@ class StoneSageHandler(http.server.SimpleHTTPRequestHandler):
                     args = action.get("args") or {}
                     # re-derived from our own stored action, never trusted from the request:
                     # destructive actions are never approvable from the watch, no matter what it claims.
-                    destructive = action.get("name") == "ha_call" and (args.get("domain"), args.get("service")) in ALWAYS_CONFIRM
+                    destructive = action.get("name") == "ha_call" and always_confirm(args.get("domain", ""), args.get("service", ""), args.get("entity_id", ""))
                     if not destructive and body.get("r") == 0:
                         try:
                             result = agent.tools.execute(action["name"], action["args"])
@@ -4928,9 +5034,18 @@ class StoneSageHandler(http.server.SimpleHTTPRequestHandler):
 
             elif path == "/api/engine/debug-stream":
                 host = body.get("host") or endpoints.host("coordinator", config)
-                port = int(body.get("port", 8001))
+                try:
+                    port = int(body.get("port", 8001))
+                except (TypeError, ValueError):
+                    port = 0
                 prompt = body.get("prompt", "")
                 params = body.get("params", {})
+                known_hosts = {endpoints.host(r, config) for r in ("coordinator", "worker", "embedder", "vision")}
+                known_hosts |= {urllib.parse.urlparse(str(i.get("url", ""))).hostname for i in get_harness_instances()}
+                if str(host) not in known_hosts or not 0 < port < 65536:
+                    # this route streams from an engine: only engines this install knows (not a probe of any host and port)
+                    self.send_json({"ok": False, "error": "host is not one of the configured engines"}, 400)
+                    return
                 if not prompt:
                     self.send_json({"ok": False, "error": "Missing prompt"}, 400)
                     return
@@ -4940,7 +5055,6 @@ class StoneSageHandler(http.server.SimpleHTTPRequestHandler):
                     self.send_header("Content-Type", "text/event-stream")
                     self.send_header("Cache-Control", "no-cache")
                     self.send_header("Connection", "keep-alive")
-                    self.send_header("Access-Control-Allow-Origin", "*")
                     self.end_headers()
                     for chunk in stream_debug_completion(host, port, prompt, params):
                         line = f"data: {json.dumps(chunk)}\n\n"
@@ -5055,6 +5169,9 @@ class StoneSageHandler(http.server.SimpleHTTPRequestHandler):
                 inst_url = (body.get("url") or "").strip()
                 if not inst_url:
                     self.send_json({"ok": False, "error": "url is required"}, 400)
+                    return
+                if urllib.parse.urlparse(inst_url).scheme not in ("http", "https") or not urllib.parse.urlparse(inst_url).hostname:
+                    self.send_json({"ok": False, "error": "url must be an http:// or https:// address"}, 400)
                     return
                 cfg = load_config()
                 instances = get_harness_instances()
@@ -5238,6 +5355,7 @@ class StoneSageHandler(http.server.SimpleHTTPRequestHandler):
                     description=t_desc,
                     parameters=t_params,
                     python_code=t_code,
+                    allow_code=auth.feature_enabled(config, "code_tools"),
                     amem_card=t_amem
                 )
                 self.send_json(res)
@@ -5756,6 +5874,13 @@ class StoneSageHandler(http.server.SimpleHTTPRequestHandler):
                 from lodestone import config_mask
                 body = config_mask.drop_masked(body)
                 cfg = load_config()
+                ignored = config_mask.protected_keys(body)
+                for k in ignored:         # the login key, feature flags, app list and workspace roots are edited in config.json
+                    body.pop(k, None)
+                errs = config_mask.destination_errors(cfg, body)
+                if errs:                  # an address changed next to a stored secret, which was not entered again
+                    self.send_json({"ok": False, "error": errs[0], "errors": errs}, 400)
+                    return
                 deep_update(cfg, body)
                 # Auto-parse proxmox token_value if provided
                 raw_tok = cfg.get("proxmox", {}).get("token_value", "").strip()
@@ -5777,7 +5902,8 @@ class StoneSageHandler(http.server.SimpleHTTPRequestHandler):
                 saved = app_ctx.hook("config_saved")    # apps refresh their own clients (Home: Home Assistant, Immich)
                 if saved is not None:
                     saved(cfg)
-                self.send_json({"ok": True, "message": "Configuration saved successfully."})
+                self.send_json({"ok": True, "message": "Configuration saved successfully.",
+                                **({"ignored": ignored} if ignored else {})})
                 return
 
             elif path == "/api/task_routing":
@@ -6103,6 +6229,12 @@ class StoneSageHandler(http.server.SimpleHTTPRequestHandler):
                 if user_turns:
                     user_query = user_turns[-1].get("content", "")
 
+                # The other soul agents (Atlas) run the same loop with their own soul and tools (not in a workspace chat)
+                soul_agent = agent_hub.chat_agent(agent_id) if config.get("courage", {}).get("tool_loop", True) and not ws_path else None
+                if soul_agent is not None:
+                    self._handle_courage_chat(messages, session_id, agent_id, agent=soul_agent)
+                    return
+
                 # Courage runs its own tool loop: no keyword grounding, no keyword-triggered device actions
                 if is_courage_agent(agent_id) and config.get("courage", {}).get("tool_loop", True):
                     self._handle_courage_chat(messages, session_id, agent_id)
@@ -6346,7 +6478,6 @@ class StoneSageHandler(http.server.SimpleHTTPRequestHandler):
                 self.send_header("Content-Type", "text/event-stream; charset=utf-8")
                 self.send_header("Cache-Control", "no-cache")
                 self.send_header("Connection", "close")
-                self.send_header("Access-Control-Allow-Origin", "*")
                 self.end_headers()
 
                 full_assistant_content = []
@@ -6952,8 +7083,8 @@ class StoneSageHandler(http.server.SimpleHTTPRequestHandler):
             elif path == "/api/cluster/delete-model":
                 model = body.get("model", "").strip()
                 safe_filename = os.path.basename(model)
-                if not safe_filename or not safe_filename.endswith(".gguf"):
-                    self.send_json({"ok": False, "error": "Invalid model filename. Must be a .gguf file."}, 400)
+                if not re.fullmatch(MODEL_FILE_RE, safe_filename or ""):
+                    self.send_json({"ok": False, "error": "Invalid model filename. Must be a .gguf file (letters, digits, . _ -)."}, 400)
                     return
                 if safe_filename in system_profile.loaded_model_files(system_profile.get_profile(load_config(), fresh=True)):
                     self.send_json({"ok": False, "error": "That model is loaded by a running engine; stop or switch the engine first."}, 403)
@@ -6966,7 +7097,7 @@ class StoneSageHandler(http.server.SimpleHTTPRequestHandler):
                         self.send_json({"ok": False, "error": f"Cannot delete '{safe_filename}' because it is currently loaded in an active service. Switch models first."}, 400)
                         return
 
-                    del_cmd = endpoints.ssh_cmd(config, f"rm -f /opt/models/{safe_filename}")
+                    del_cmd = endpoints.ssh_cmd(config, f"rm -f -- /opt/models/{shlex.quote(safe_filename)}")
                     del_res = subprocess.run(del_cmd, capture_output=True, text=True, timeout=15)
                     if del_res.returncode == 0:
                         self.send_json({"ok": True, "deleted": safe_filename})
@@ -6979,6 +7110,9 @@ class StoneSageHandler(http.server.SimpleHTTPRequestHandler):
             elif path == "/api/cluster/calibrate-model":
                 discover_py = os.path.join(WORKSPACE_ROOT, ".agents", "skills", "model-parameter-discoverer", "discover_parameters.py")
                 model_name = body.get("model_name", "Current-Model")
+                if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._ :/-]{0,120}", str(model_name)):
+                    self.send_json({"ok": False, "error": "Invalid model name"}, 400)
+                    return
                 try:
                     proc = subprocess.run([sys.executable, discover_py, "--model-name", model_name, "--port", "8001"], capture_output=True, text=True, timeout=240)
                     self.send_json({
@@ -7135,8 +7269,13 @@ class StoneSageHandler(http.server.SimpleHTTPRequestHandler):
                 if "," in raw_data:
                     raw_data = raw_data.split(",", 1)[1]
                 try:
+                    if len(raw_data) > MAX_UPLOAD_BYTES * 4 // 3 + 16:
+                        self.send_json({"ok": False, "error": f"file too large (limit {MAX_UPLOAD_BYTES // 2**20} MB)"}, 413)
+                        return
                     file_bytes = base64.b64decode(raw_data)
-                    ext = os.path.splitext(orig_name)[1] or ".bin"
+                    ext = os.path.splitext(orig_name)[1].lower()
+                    if ext not in UPLOAD_ALLOWED_EXTS:
+                        ext = ".bin"          # the stored name never takes an executable type (.html, .svg, .js) from the client
                     file_hash = hashlib.sha256(file_bytes[:1024] + str(time.time()).encode()).hexdigest()[:12]
                     safe_name = f"{file_hash}{ext}"
                     target_path = os.path.join(UPLOADS_DIR, safe_name)
@@ -7161,10 +7300,11 @@ class StoneSageHandler(http.server.SimpleHTTPRequestHandler):
                 if not req_path:
                     self.send_json({"ok": False, "error": "Missing path"}, 400)
                     return
-                if os.path.isabs(req_path):
-                    full_path = os.path.abspath(req_path)
-                else:
-                    full_path = os.path.abspath(os.path.join(ACTIVE_WORKSPACE_DIR, req_path))
+                try:
+                    full_path = resolve_workspace_path(req_path)
+                except ValueError as ex:
+                    self.send_json({"ok": False, "error": str(ex)}, 403)
+                    return
                 try:
                     os.makedirs(os.path.dirname(full_path), exist_ok=True)
                     with open(full_path, "w", encoding="utf-8") as f:
@@ -7185,10 +7325,11 @@ class StoneSageHandler(http.server.SimpleHTTPRequestHandler):
                 if not req_path:
                     self.send_json({"ok": False, "error": "Missing path"}, 400)
                     return
-                if os.path.isabs(req_path):
-                    full_path = os.path.abspath(req_path)
-                else:
-                    full_path = os.path.abspath(os.path.join(ACTIVE_WORKSPACE_DIR, req_path))
+                try:
+                    full_path = resolve_workspace_path(req_path)
+                except ValueError as ex:
+                    self.send_json({"ok": False, "error": str(ex)}, 403)
+                    return
                 existing = ""
                 if os.path.exists(full_path) and os.path.isfile(full_path):
                     try:
@@ -7218,13 +7359,15 @@ class StoneSageHandler(http.server.SimpleHTTPRequestHandler):
                 cmd = body.get("command", "").strip()
                 cwd_req = body.get("cwd", "").strip()
                 exec_cwd = ACTIVE_WORKSPACE_DIR
+                term_roots = [r.get("path") for r in get_workspace_roots() if isinstance(r, dict) and r.get("path")]
                 if cwd_req:
-                    if os.path.isabs(cwd_req) and os.path.isdir(cwd_req):
-                        exec_cwd = os.path.abspath(cwd_req)
-                    else:
-                        target_dir = os.path.abspath(os.path.join(ACTIVE_WORKSPACE_DIR, cwd_req))
-                        if os.path.isdir(target_dir):
-                            exec_cwd = target_dir
+                    try:        # a directory inside a workspace root, or the request is refused (no walking out with cwd)
+                        target_dir = paths.contained_in_any(cwd_req, term_roots, cwd=ACTIVE_WORKSPACE_DIR)
+                    except ValueError as ex:
+                        self.send_json({"ok": False, "error": str(ex)}, 403)
+                        return
+                    if os.path.isdir(target_dir):
+                        exec_cwd = target_dir
 
                 if not cmd:
                     self.send_json({"ok": False, "error": "Command string is required"}, 400)
@@ -7270,6 +7413,11 @@ class StoneSageHandler(http.server.SimpleHTTPRequestHandler):
                                 "exit_code": 1
                             })
                             return
+                    try:
+                        new_cwd = paths.contained_in_any(new_cwd, term_roots, cwd=ACTIVE_WORKSPACE_DIR)
+                    except ValueError as ex:
+                        self.send_json({"ok": False, "command": cmd, "cwd_abs": exec_cwd, "stderr": str(ex), "exit_code": 1})
+                        return
                     exec_cwd = new_cwd
                     rel_cwd = os.path.relpath(exec_cwd, ACTIVE_WORKSPACE_DIR).replace("\\", "/")
                     if rel_cwd == ".":
@@ -7286,7 +7434,7 @@ class StoneSageHandler(http.server.SimpleHTTPRequestHandler):
                     return
 
                 # Coding & System Command Whitelist Validation
-                is_allowed, reason = validate_terminal_command(cmd, cwd=exec_cwd)
+                is_allowed, reason = validate_terminal_command(cmd, cwd=exec_cwd, allowed_roots=term_roots)
                 if not is_allowed:
                     self.send_json({
                         "ok": False,
@@ -7300,14 +7448,7 @@ class StoneSageHandler(http.server.SimpleHTTPRequestHandler):
                     return
 
                 try:
-                    shell_cmd = ["powershell", "-NoProfile", "-Command", cmd] if os.name == "nt" else ["/bin/bash", "-c", cmd]
-                    proc = subprocess.run(
-                        shell_cmd,
-                        cwd=exec_cwd,
-                        capture_output=True,
-                        text=True,
-                        timeout=30
-                    )
+                    proc = run_command(cmd, exec_cwd, timeout=30)     # argv, shell=False (command_whitelist.py)
                     rel_cwd = os.path.relpath(exec_cwd, ACTIVE_WORKSPACE_DIR).replace("\\", "/")
                     if rel_cwd == ".":
                         rel_cwd = ""
@@ -7353,7 +7494,11 @@ class StoneSageHandler(http.server.SimpleHTTPRequestHandler):
                 if not repo_path:
                     self.send_json({"ok": False, "error": "Missing repository path"}, 400)
                     return
-                abs_path = os.path.abspath(repo_path)
+                try:
+                    abs_path = paths.contained_in_any(repo_path, [r.get("path") for r in get_workspace_roots()], cwd=ACTIVE_WORKSPACE_DIR)
+                except ValueError as ex:
+                    self.send_json({"ok": False, "error": str(ex)}, 403)
+                    return
                 if not os.path.exists(abs_path) or not os.path.isdir(abs_path):
                     self.send_json({"ok": False, "error": f"Directory not found: {repo_path}"}, 404)
                     return
@@ -7375,14 +7520,22 @@ class StoneSageHandler(http.server.SimpleHTTPRequestHandler):
                 if not clone_url:
                     self.send_json({"ok": False, "error": "Missing repository URL"}, 400)
                     return
+                if not safe_git_url(clone_url):
+                    self.send_json({"ok": False, "error": "Only https://, ssh:// and git@host:path repository URLs are cloned."}, 400)
+                    return
                 if not dest_dir:
-                    repo_name = clone_url.rstrip("/").split("/")[-1].replace(".git", "")
+                    repo_name = re.sub(r"[^A-Za-z0-9._-]", "_", clone_url.rstrip("/").split("/")[-1].replace(".git", "")) or "repo"
                     dest_dir = os.path.join(ACTIVE_WORKSPACE_DIR, repo_name)
-                dest_abs = os.path.abspath(dest_dir)
+                try:
+                    dest_abs = paths.contained_in_any(dest_dir, [r.get("path") for r in get_workspace_roots()], cwd=ACTIVE_WORKSPACE_DIR)
+                except ValueError as ex:
+                    self.send_json({"ok": False, "error": str(ex)}, 403)
+                    return
                 try:
                     os.makedirs(os.path.dirname(dest_abs), exist_ok=True)
                     proc = subprocess.run(
-                        ["git", "clone", clone_url, dest_abs],
+                        # `--` ends the options (a URL can never be read as one); transports that run programs are off
+                        ["git", "-c", "protocol.ext.allow=never", "-c", "protocol.file.allow=never", "clone", "--", clone_url, dest_abs],
                         capture_output=True,
                         text=True,
                         timeout=120
@@ -7637,7 +7790,6 @@ class StoneSageHandler(http.server.SimpleHTTPRequestHandler):
                         self.send_header("Content-Type", "application/x-ndjson; charset=utf-8")
                         self.send_header("Cache-Control", "no-cache")
                         self.send_header("Connection", "close")
-                        self.send_header("Access-Control-Allow-Origin", "*")
                         self.end_headers()
 
                         with urllib.request.urlopen(fwd_req, timeout=60) as resp:
@@ -7912,7 +8064,6 @@ class StoneSageHandler(http.server.SimpleHTTPRequestHandler):
                     self.send_header("Content-Type", "text/event-stream; charset=utf-8")
                     self.send_header("Cache-Control", "no-cache")
                     self.send_header("Connection", "close")
-                    self.send_header("Access-Control-Allow-Origin", "*")
                     self.end_headers()
                     try:
                         with urllib.request.urlopen(fwd_req, timeout=180) as resp:
@@ -8021,7 +8172,6 @@ class StoneSageHandler(http.server.SimpleHTTPRequestHandler):
                                     pass
                             self.send_response(200)
                             self.send_header("Content-Type", "application/json; charset=utf-8")
-                            self.send_header("Access-Control-Allow-Origin", "*")
                             self.send_header("Content-Length", str(len(data)))
                             self.end_headers()
                             self.wfile.write(data)
@@ -8064,6 +8214,55 @@ app_ctx = AppContext(config, ROOT_DIR, _stonesage_data_dir, tool_registry=tool_r
 })
 load_apps(config.get("apps", ["hearth"]), app_ctx)   # "home" in an old config still works (apps.APP_ALIASES)
 
+# ---- Agents (stonesage/agents.py) and the agent API (agent_api.py: /v1/*, /api/souls*) ----------------------------------
+from stonesage import agent_api  # noqa: E402
+from stonesage.agents import AgentHub, AgentServices  # noqa: E402
+
+
+def _agent_services() -> AgentServices:
+    from lodestone import system_profile
+    from stonesage.courage import llm_timeout_s
+    return AgentServices(
+        llm_url=lambda role: endpoints.url(role, config),
+        timeout=lambda: llm_timeout_s(config, system_profile.cached_profile()),
+        memory=_courage_memory,
+        lease_brain=lambda role: _engine_lease.brain(role) if _engine_lease else None)
+
+
+agent_hub = AgentHub(_stonesage_data_dir, _agent_services(),
+                     computer=get_courage_agent if _courage_agent_if_any() else None,
+                     computer_built=lambda: _courage_agent)
+agent_api.install(app_ctx, agent_hub)
+
+PTY_PORT = 8088
+
+
+def start_pty_daemon(cfg: Dict[str, Any], port: int = PTY_PORT) -> Optional[threading.Thread]:
+    """The shell WebSocket daemon (harness/server.py). It is a web terminal, so it exists only when features.web_terminal is
+    true. Then it listens on 127.0.0.1 only, and each connection must carry the key (bearer) or a session cookie with an
+    Origin from this host name (auth.websocket_allowed). Returns the thread, or None when the feature is off."""
+    if not auth.feature_enabled(cfg, "web_terminal"):
+        logger.info("PTY shell WebSocket (:%d) not started (features.web_terminal is off)", port)
+        return None
+
+    def run():
+        try:
+            for cd in (os.path.join(ROOT_DIR, "harness"), os.path.join(WORKSPACE_ROOT, "harness"),
+                       os.path.join(ROOT_DIR, "backend", "harness")):
+                if os.path.isdir(cd) and os.path.dirname(cd) not in sys.path:
+                    sys.path.insert(0, os.path.dirname(cd))
+            from harness.server import HarnessServer
+            logger.info("Launching StoneSage PTY Shell WebSocket Daemon on 127.0.0.1:%d (login required)", port)
+            HarnessServer(host="127.0.0.1", port=port,
+                          authorize=lambda headers: auth.websocket_allowed(headers, cfg)).run()
+        except Exception as e:
+            logger.warning("PTY WebSocket server (:%d) skipped or unavailable: %s", port, e)
+
+    t = threading.Thread(target=run, daemon=True, name=f"HarnessPTY-{port}")
+    t.start()
+    return t
+
+
 if __name__ == "__main__":
     port = int(config.get("server", {}).get("port", 8888))
     host = config.get("server", {}).get("host", "0.0.0.0")
@@ -8076,6 +8275,12 @@ if __name__ == "__main__":
         logger.info("Optional services not configured (localhost default if you start one): %s", ", ".join(_optional))
 
     http.server.ThreadingHTTPServer.allow_reuse_address = True
+    try:
+        auth.ensure_key(config, CONFIG_FILE)     # the server never runs open: no key set = one is generated and saved (0600)
+    except Exception as e:
+        print(f"[!] Could not create the API key: {e}")
+        print(f"    Set STONESAGE_API_KEY in the environment, or api.key in {CONFIG_FILE}.")
+        sys.exit(1)
     try:
         setup_boost()
     except Exception as e:
@@ -8101,25 +8306,33 @@ if __name__ == "__main__":
         class Redirect8080Handler(http.server.BaseHTTPRequestHandler):
             def log_message(self, format, *args):
                 pass
-            def do_GET(self):
-                host_hdr = self.headers.get("Host", "").split(":")[0] or "localhost"
-                target_url = f"http://{host_hdr}:8888{self.path}"
+
+            def _bounce(self):
+                # the target is built from the Host header, so it must be one of ours (auth.host_allowed) and plain
+                host_hdr = self.headers.get("Host", "")
+                name = auth._split_host(host_hdr)[0] or "localhost"
+                if not auth.host_allowed(host_hdr, config) or not re.fullmatch(r"[a-z0-9.:_-]+", name):
+                    self.send_response(421)
+                    self.send_header("Content-Length", "0")
+                    self.end_headers()
+                    return False
+                name = f"[{name}]" if ":" in name else name
                 self.send_response(302)
-                self.send_header("Location", target_url)
+                where = self.path if self.path.startswith("/") and not any(c in self.path for c in "\r\n\0 ") else "/"
+                self.send_header("Location", f"http://{name}:8888{where}")
                 self.send_header("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0")
                 self.end_headers()
-                try:
-                    self.wfile.write(b"Redirecting to StoneSage port 8888...")
-                except Exception:
-                    pass
+                return True
+
+            def do_GET(self):
+                if self._bounce():
+                    try:
+                        self.wfile.write(b"Redirecting to StoneSage port 8888...")
+                    except Exception:
+                        pass
 
             def do_HEAD(self):
-                host_hdr = self.headers.get("Host", "").split(":")[0] or "localhost"
-                target_url = f"http://{host_hdr}:8888{self.path}"
-                self.send_response(302)
-                self.send_header("Location", target_url)
-                self.send_header("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0")
-                self.end_headers()
+                self._bounce()
 
         def _start_redirector():
             try:
@@ -8130,24 +8343,7 @@ if __name__ == "__main__":
 
         threading.Thread(target=_start_redirector, daemon=True).start()
 
-        def _start_pty_server():
-            try:
-                candidate_dirs = [
-                    os.path.join(ROOT_DIR, "harness"),
-                    os.path.join(WORKSPACE_ROOT, "harness"),
-                    os.path.join(ROOT_DIR, "backend", "harness")
-                ]
-                for cd in candidate_dirs:
-                    if os.path.isdir(cd) and os.path.dirname(cd) not in sys.path:
-                        sys.path.insert(0, os.path.dirname(cd))
-                from harness.server import HarnessServer
-                logger.info("⚡ Launching StoneSage PTY Shell WebSocket Daemon on 0.0.0.0:8088...")
-                pty_server = HarnessServer(host="0.0.0.0", port=8088)
-                pty_server.run()
-            except Exception as e:
-                logger.warning("PTY WebSocket server (:8088) skipped or unavailable: %s", e)
-
-        threading.Thread(target=_start_pty_server, daemon=True, name="HarnessPTY-8088").start()
+        start_pty_daemon(config)
 
     # ─── HTTPS Listener on :8443 (enables mic/camera secure context from LAN) ───
     ssl_port = int(config.get("server", {}).get("ssl_port", 8443))
@@ -8178,6 +8374,7 @@ if __name__ == "__main__":
     print("  [ STONESAGE COGNITIVE TERMINAL WORKSTATION v4.0 - ENTERPRISE ]")
     print(f"  Local Browser:     http://localhost:{port} (or http://127.0.0.1:{port})")
     print(f"{https_banner}")
+    print("  Login:             needs the API key  (python -m stonesage.auth show-key)")
     print(f"  LAN Workstation:   http://{lan_ip}:{port}")
     print(f"  Proxmox API:       {load_config().get('proxmox', {}).get('cluster_url', 'not configured')}")
     print(f"  Dual-GPU Cluster:  coder-agent 16k (:8001) & home-agent (:8002)")

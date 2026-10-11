@@ -35,15 +35,48 @@ try:
 except ImportError:
     websockets = None
 
+def _request_headers(websocket):
+    """The handshake headers, whichever websockets API this is (new asyncio: .request.headers; legacy: .request_headers)."""
+    req = getattr(websocket, "request", None)
+    return getattr(req, "headers", None) or getattr(websocket, "request_headers", None) or {}
+
+
+def config_authorizer():
+    """The default check: the server's own config file (STONESAGE_CONFIG_FILE, else backend/config.json), re-read per
+    connection, decides with stonesage.auth (Host allowed, then the key as a bearer, or a session cookie + same-host Origin)."""
+    def check(headers) -> bool:
+        from stonesage import auth
+        try:
+            with open(auth.default_config_file(), "r", encoding="utf-8-sig") as f:
+                cfg = json.load(f)
+        except Exception:
+            cfg = {}
+        return auth.websocket_allowed(headers, cfg)
+    return check
+
+
 class HarnessServer:
-    def __init__(self, host: str = "0.0.0.0", port: int = 8088):
+    """The shell WebSocket. It runs a login shell for whoever connects, so: it listens on this machine only by default, and
+    every connection must pass `authorize(headers)` (no authorizer = nobody gets in)."""
+
+    def __init__(self, host: str = "127.0.0.1", port: int = 8088, authorize=None):
         self.host = host
         self.port = port
+        self.authorize = authorize or config_authorizer()
         self.connected_clients = set()
         self._running = False
 
     async def handle_websocket(self, websocket):
         """Duplex WebSocket handler for streaming reasoning and receiving out-of-band commands."""
+        try:
+            allowed = bool(self.authorize(_request_headers(websocket)))
+        except Exception as e:
+            logger.warning(f"Harness WebSocket: authorization failed to run ({e}); refusing")
+            allowed = False
+        if not allowed:
+            logger.warning("Harness WebSocket: connection refused (no valid login or origin)")
+            await websocket.close(code=1008, reason="login required")
+            return
         self.connected_clients.add(websocket)
         client_id = f"client_{id(websocket)}"
         logger.info(f"Client {client_id} connected to Harness WebSocket.")
@@ -214,4 +247,13 @@ class HarnessServer:
 harness_server = HarnessServer()
 
 if __name__ == "__main__":
+    try:
+        from stonesage import auth as _auth
+        with open(_auth.default_config_file(), "r", encoding="utf-8-sig") as _f:
+            _enabled = _auth.feature_enabled(json.load(_f), "web_terminal")
+    except Exception:
+        _enabled = False
+    if not _enabled:
+        logger.error("The shell WebSocket is off: set features.web_terminal to true in config.json to start it.")
+        sys.exit(1)
     harness_server.run()

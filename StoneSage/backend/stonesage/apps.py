@@ -26,9 +26,23 @@ class Routes:
     def __init__(self):
         self._exact: Dict[Tuple[str, str], Tuple[str, RouteFn]] = {}
         self._prefix: List[Tuple[str, str, str, RouteFn]] = []
+        self._features: Dict[Tuple[str, str], str] = {}        # (method, path) -> config features.<name> that must be true
 
-    def add(self, method: str, path: str, fn: RouteFn, prefix: bool = False, owner: str = "") -> None:
+    def feature(self, method: str, path: str) -> str:
+        """The feature flag a route sits behind ('' when none). The gate (auth.py) answers 404 while it is off."""
         method = method.upper()
+        flag = self._features.get((method, path))
+        if flag:
+            return flag
+        for (m, p), f in self._features.items():
+            if m == method and p.endswith("*") and path.startswith(p[:-1]):
+                return f
+        return ""
+
+    def add(self, method: str, path: str, fn: RouteFn, prefix: bool = False, owner: str = "", feature: str = "") -> None:
+        method = method.upper()
+        if feature:
+            self._features[(method, path + "*" if prefix else path)] = feature
         if prefix:
             self._prefix = [p for p in self._prefix if (p[0], p[1]) != (method, path)] + [(method, path, owner, fn)]
             self._prefix.sort(key=lambda p: -len(p[1]))
@@ -92,8 +106,9 @@ class AppContext:
     def on_start(self, fn: Callable[[], None]) -> None:
         self._starters.append((self._current, fn))
 
-    def add_route(self, method: str, path: str, fn: RouteFn, prefix: bool = False) -> None:
-        self.routes.add(method, path, fn, prefix=prefix, owner=self._current)
+    def add_route(self, method: str, path: str, fn: RouteFn, prefix: bool = False, feature: str = "") -> None:
+        """`feature`: a route that is off unless config features.<name> is true (and is behind the login either way)."""
+        self.routes.add(method, path, fn, prefix=prefix, owner=self._current, feature=feature)
 
     def start(self) -> None:
         for app, fn in self._starters:

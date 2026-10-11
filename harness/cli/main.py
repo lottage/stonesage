@@ -65,7 +65,7 @@ async def async_chat_turn(primary_client: LlamaClient, user_query: str):
         node_badge = f"Speculative ({fleet_config.gpu('coordinator') or 'coordinator'} + {fleet_config.gpu('worker') or 'worker'})"
     else:
         node_info = fleet_config.nodes.get(target_node, fleet_config.get_active_node())
-        client = LlamaClient(base_url=node_info.base_url)
+        client = LlamaClient(base_url=node_info.base_url, api_key=getattr(node_info, "api_key", ""))
         node_badge = node_info.name
 
     proj_suffix = f" • Project: {AgentShell.active_project['name']}" if AgentShell.active_project else ""

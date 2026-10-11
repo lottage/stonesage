@@ -34,7 +34,7 @@ class NodeScheduler:
 
     def _init_clients(self):
         for nid, node in self.config.nodes.items():
-            self.clients[nid] = LlamaClient(base_url=node.base_url)
+            self.clients[nid] = LlamaClient(base_url=node.base_url, api_key=getattr(node, "api_key", ""))
 
     async def acquire_slot(
         self,

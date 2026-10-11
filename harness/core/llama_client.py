@@ -25,11 +25,17 @@ class StreamChunk:
     model_name: str = ""
 
 class LlamaClient:
-    def __init__(self, base_url: str, timeout: float = 120.0):
+    def __init__(self, base_url: str, timeout: float = 120.0, api_key: str = ""):
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
+        self.api_key = (api_key or "").strip()
         self._active_tasks: Dict[str, asyncio.Task] = {}
         self._cached_model: Optional[str] = None
+
+    def _headers(self, headers: Dict[str, str]) -> Dict[str, str]:
+        if self.api_key:
+            headers["Authorization"] = "Bearer " + self.api_key
+        return headers
 
     async def get_loaded_model(self) -> str:
         """Dynamically polls the server's /models endpoint to retrieve loaded model ID."""
@@ -39,7 +45,7 @@ class LlamaClient:
         try:
             loop = asyncio.get_running_loop()
             def _fetch():
-                req = urllib.request.Request(models_url, headers={"User-Agent": "LlamaClient"})
+                req = urllib.request.Request(models_url, headers=self._headers({"User-Agent": "LlamaClient"}))
                 with urllib.request.urlopen(req, timeout=3.0) as resp:
                     return json.loads(resp.read().decode("utf-8"))
             data = await loop.run_in_executor(None, _fetch)
@@ -95,7 +101,7 @@ class LlamaClient:
             req = urllib.request.Request(
                 url,
                 data=json.dumps(payload).encode("utf-8"),
-                headers={"Content-Type": "application/json", "User-Agent": "Harness-Client"},
+                headers=self._headers({"Content-Type": "application/json", "User-Agent": "Harness-Client"}),
                 method="POST"
             )
 

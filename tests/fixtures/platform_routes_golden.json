@@ -911,20 +911,19 @@
  "/api/workspace/file": {
   "keys": [
    "error",
+   "feature",
    "ok"
   ],
-  "status": 400,
+  "status": 404,
   "type": "application/json"
  },
  "/api/workspace/tree": {
   "keys": [
-   "current_dir",
-   "ok",
-   "parent_dir",
-   "presets",
-   "tree"
+   "error",
+   "feature",
+   "ok"
   ],
-  "status": 200,
+  "status": 404,
   "type": "application/json"
  },
  "/api/workspaces/agent": {

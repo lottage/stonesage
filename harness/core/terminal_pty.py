@@ -6,6 +6,7 @@ Uses genuine POSIX pseudoterminals (pty.openpty) on Linux for 100% terminal comp
 """
 
 import os
+import re
 import sys
 import json
 import asyncio
@@ -62,6 +63,12 @@ class TerminalSession:
         if self._running:
             return
 
+        if self.target_host and self.target_host not in ("127.0.0.1", "localhost") \
+                and not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,252}", str(self.target_host)):
+            # no option can ride in as a host, and a bad host must not quietly become a local shell
+            self._emit("\r\n[ERROR: not a host name or address: %r]\r\n" % str(self.target_host)[:80])
+            return
+
         env = os.environ.copy()
         env["TERM"] = "xterm-256color"
         env["COLORTERM"] = "truecolor"
@@ -80,7 +87,7 @@ class TerminalSession:
                 # Target selection
                 if self.target_host and self.target_host not in ("127.0.0.1", "localhost"):
                     from harness.config import fleet_config   # host keys per config (accept-new by default)
-                    cmd = ["ssh", "-tt"] + fleet_config.ssh_options(batch=False) + [f"root@{self.target_host}"]
+                    cmd = ["ssh", "-tt"] + fleet_config.ssh_options(batch=False) + ["--", f"root@{self.target_host}"]
                 else:
                     # Interactive login bash on local system
                     cmd = ["bash", "-l"]

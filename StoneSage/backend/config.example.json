@@ -28,5 +28,15 @@
   },
   "server": {
     "timezone": ""
+  },
+  "api": {
+    "allowed_hosts": [],
+    "trusted_hosts": []
+  },
+  "features": {
+    "web_terminal": false,
+    "code_tools": false,
+    "file_editor": false,
+    "raw_ha_call": false
   }
 }

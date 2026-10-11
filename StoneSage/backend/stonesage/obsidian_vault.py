@@ -12,6 +12,9 @@ import time
 import subprocess
 from typing import Dict, Any, List, Optional
 
+from stonesage.paths import safe_join
+
+
 class ObsidianVault:
     def __init__(self, vault_dir: str):
         self.vault_dir = os.path.abspath(vault_dir)
@@ -51,11 +54,25 @@ class ObsidianVault:
         except Exception:
             pass
 
+    def _clean(self, rel_path: str) -> str:
+        """A note path relative to the vault. ValueError for `..`, a drive, a NUL, or a symlink that leaves the vault (the old
+        code only deleted the characters `..`, which `....//` survives)."""
+        rel = os.path.normpath(str(rel_path)).lstrip("\\/")
+        safe_join(self.vault_dir, rel)
+        return rel
+
     def save_note(self, rel_path: str, content: str) -> Dict[str, Any]:
         """Save or update note. If previous version exists, back it up to _archive first."""
-        clean_path = os.path.normpath(rel_path).lstrip("\\/").replace("..", "")
+        try:
+            clean_path = self._clean(rel_path)
+        except ValueError as e:
+            return {"ok": False, "error": f"Invalid note path: {e}"}
         if not clean_path.endswith(".md") and not clean_path.endswith(".txt"):
             clean_path += ".md"
+        try:
+            self._clean(clean_path)
+        except ValueError as e:
+            return {"ok": False, "error": f"Invalid note path: {e}"}
 
         full_path = os.path.join(self.vault_dir, clean_path)
         obsidian_sub = os.path.join(self.vault_dir, "obsidian", clean_path)
@@ -94,7 +111,10 @@ class ObsidianVault:
         Zero-Delete Policy:
         Files are NEVER permanently deleted. They are archived with a tombstone stamp.
         """
-        clean_path = os.path.normpath(rel_path).lstrip("\\/").replace("..", "")
+        try:
+            clean_path = self._clean(rel_path)
+        except ValueError as e:
+            return {"ok": False, "error": f"Invalid note path: {e}"}
         full_path = os.path.join(self.vault_dir, clean_path)
 
         if not os.path.exists(full_path):
@@ -137,7 +157,10 @@ class ObsidianVault:
 
     def get_note(self, rel_path: str) -> Dict[str, Any]:
         """Fetch content and historical revision count for a note."""
-        clean_path = os.path.normpath(rel_path).lstrip("\\/").replace("..", "")
+        try:
+            clean_path = self._clean(rel_path)
+        except ValueError as e:
+            return {"ok": False, "error": f"Invalid note path: {e}"}
         full_path = os.path.join(self.vault_dir, clean_path)
 
         if not (os.path.exists(full_path) and os.path.isfile(full_path)):
