@@ -1,5 +1,5 @@
 """
-Immich Photo & Vision Grounding Connector (LXC 107 :9000).
+Immich Photo & Vision Grounding Connector (port 9000).
 Enables agents to query photo EXIF metadata, smart search tags, faces, and timestamps.
 """
 

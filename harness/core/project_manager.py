@@ -1,7 +1,7 @@
 """
 Cross-Endpoint Project Registry & Lifecycle Manager.
 Coordinates in-repository Agent DNA (.stonesage/), StoneSage workspace roots,
-cross-endpoint project access (local Windows, VM 102, NAS), and CLI context switching.
+cross-endpoint project access (local Windows, the engine host, NAS), and CLI context switching.
 """
 
 import os
@@ -410,7 +410,7 @@ class ProjectManager:
         agents_md = (
             f"# PEER COLLABORATION: {dest_name}\n\n"
             f"- Peers: Can communicate with all Sovereign agents in Aevum Mesh.\n"
-            f"- Coordinator: Node 1 Primary Accelerator (VM 102 :8001)\n"
+            f"- Coordinator: Node 1 Primary Accelerator (port 8001)\n"
             f"- Frontier Arbiter: Antigravity (AGY powered by gemini-3.8-flash)\n"
         )
         with open(os.path.join(dest_dir, "AGENTS.md"), "w", encoding="utf-8") as f:

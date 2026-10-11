@@ -1,5 +1,5 @@
 """
-Home Assistant Connector (VM 103 :8123).
+Home Assistant Connector (port 8123).
 Provides state queries and service invocations for smart home entities.
 """
 

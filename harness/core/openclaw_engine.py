@@ -79,7 +79,7 @@ class OpenClawEngine:
         agents_md = (
             f"# AGENTS COLLABORATION HIERARCHY: {name}\n\n"
             f"## Upstream Coordinator\n"
-            f"- Coordinator: Node 1 Primary Accelerator (VM 102 :8001)\n"
+            f"- Coordinator: Node 1 Primary Accelerator (port 8001)\n"
             f"- Frontier Arbiter: Antigravity (AGY powered by gemini-3.8-flash)\n\n"
             f"## Handoff & Roaming Protocol\n"
             f"- When roaming off-LAN, write completed tasks to `HANDOVER.md` for reconciliation on reconnect.\n"

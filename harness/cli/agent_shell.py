@@ -117,7 +117,7 @@ class AgentShell:
         target_node = args[1].strip().lower() if len(args) > 1 else "node2_edge"
         if target_node in ("edge", "ally", "ally_x", "ally-x", "node2_edge", "node2_edge"):
             target_node = "node2_edge"
-        elif target_node in ("primary", "vm102", "coordinator"):
+        elif target_node in ("primary", "coordinator"):
             target_node = "node1_primary"
         elif target_node in ("secondary", "worker"):
             target_node = "node1_secondary"

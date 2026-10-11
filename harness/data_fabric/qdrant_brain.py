@@ -1,5 +1,5 @@
 """
-Tier 3: Long-Term Semantic Vector Memory (Qdrant Vector Brain on LXC 117 :6333).
+Tier 3: Long-Term Semantic Vector Memory (Qdrant Vector Brain on the Qdrant host :6333).
 Uses the embedder engine (config cluster.embedder_url; BGE inputs < 950 chars).
 Enforces semantic novelty gatekeeping (< 0.85 cosine similarity).
 """

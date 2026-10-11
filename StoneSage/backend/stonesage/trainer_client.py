@@ -2,7 +2,7 @@
 """
 StoneSage GGUF Trainer Client & Cluster Bridge
 Connects the StoneSage Web Cockpit to the GGUF LLM Training Pipeline (QLoRA & Controlled RL)
-deployed on VM 102 (/opt/pipeline-gguf-trainer) and local repository.
+deployed on the engine host (/opt/pipeline-gguf-trainer) and local repository.
 
 Provides 100% standard-library hooks for:
 - Live training status & VRAM gauge
@@ -69,7 +69,7 @@ class TrainerClient:
                 self.active_log_lines = self.active_log_lines[-250:]
 
     def _run_remote_cmd(self, cmd_str: str, timeout: int = 30) -> Dict[str, Any]:
-        """Execute command remotely on VM 102 via SSH."""
+        """Execute command remotely on the engine host via SSH."""
         full_ssh = endpoints.ssh_cmd(None, cmd_str, target=f"{self.remote_user}@{self.remote_host}")
         try:
             res = subprocess.run(full_ssh, capture_output=True, text=True, timeout=timeout)

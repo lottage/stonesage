@@ -23,7 +23,7 @@ class TestMultiStreamView(unittest.TestCase):
             agent_id="test-agent",
             agent_name="TestAgent",
             node_id="node1_primary",
-            node_name="VM 102 Vulkan0",
+            node_name="Engine host Vulkan0",
             model_name="moe",
             slot_id=0
         )
@@ -47,7 +47,7 @@ class TestMultiStreamView(unittest.TestCase):
 
     def test_render_view_output(self):
         """Verify Rich panel layout generates without exceptions."""
-        self.tui.register_stream("a1", "Agent 1", "node1_primary", "VM 102", "moe", 0)
+        self.tui.register_stream("a1", "Agent 1", "node1_primary", "Engine host", "moe", 0)
         self.tui.register_stream("a2", "Agent 2", "node2_ally_x", "ROG Ally X", "gemma", 1)
         self.tui.update_stream("a1", thought="Thinking step 1", tps=40.0)
         self.tui.update_stream("a2", content="Code output 1", tps=80.0)

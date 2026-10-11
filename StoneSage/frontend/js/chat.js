@@ -1270,7 +1270,7 @@ function formatChatContent(raw) {
         </details>
       </div>`;
     }
-    // one-line chip: "🔧 camera_look · camera: kitchen_living_room", arguments one click away
+    // one-line chip: "🔧 camera_look · camera: living_room", arguments one click away
     const brief = payload.replace(/&quot;|[{}\n]/g, '').replace(/\s+/g, ' ').trim();
     return `<details class="tool-chip"><summary>🔧 ${name}${brief ? ' · ' + brief.slice(0, 80) : ''}</summary><pre>${payload}</pre></details>`;
   });

@@ -3,7 +3,7 @@ Home Presence Hub & Courage Computer Persona Engine.
 Fuses 24/7 multimodal computer vision (:8004 VLM), resident and pet Re-ID,
 Home Assistant telemetry, appliance status (dryer/washer), and perimeter wildlife sentry.
 Answers resident queries in real-time using the iconic 'Courage the Cowardly Dog'
-computer persona with Kokoro TTS audio generation (bm_george @ 1.06x on LXC 121 :8300).
+computer persona with Kokoro TTS audio generation (bm_george @ 1.06x on the voice host :8300).
 """
 
 import os
@@ -56,11 +56,11 @@ def _pet_keys() -> List[str]:
 class HomePresenceHub:
     def __init__(
         self,
-        vm102_ssh_host: str = "",          # "user@host"; "" = the engines' host (lodestone/endpoints.py)
+        engine_ssh_host: str = "",          # "user@host"; "" = the engines' host (lodestone/endpoints.py)
         wildlife_base_dir: str = "/opt/cluster-bridge/wildlife",
         coordinator_url: str = fleet_config.coordinator_url
     ):
-        self.vm102_ssh_host = vm102_ssh_host
+        self.engine_ssh_host = engine_ssh_host
         self.wildlife_base_dir = wildlife_base_dir
         self.coordinator_url = coordinator_url.rstrip("/")
         self._cached_presence: Dict[str, Any] = {}
@@ -68,12 +68,12 @@ class HomePresenceHub:
         self._poll_cache_ttl: float = 5.0  # 5s cache for fast UI polling
 
     def get_known_entities(self) -> Dict[str, Any]:
-        """Fetches known residents and pets configuration from VM 102 or local fallback."""
-        # used when VM 102's known_entities.json can't be read: the household from config.json, never names in code
+        """Fetches known residents and pets configuration from the engine host or local fallback."""
+        # used when the engine host's known_entities.json can't be read: the household from config.json, never names in code
         default_entities = _household_entities(fleet_config.stonesage_cfg)
         try:
             import subprocess
-            cmd = fleet_config.ssh_cmd(f"cat {self.wildlife_base_dir}/known_entities.json", target=self.vm102_ssh_host)
+            cmd = fleet_config.ssh_cmd(f"cat {self.wildlife_base_dir}/known_entities.json", target=self.engine_ssh_host)
             sub = subprocess.run(cmd, capture_output=True, text=True, timeout=3)
             if sub.returncode == 0 and sub.stdout.strip():
                 return json.loads(sub.stdout)
@@ -82,7 +82,7 @@ class HomePresenceHub:
         return default_entities
 
     def get_recent_sightings(self, limit: int = 15) -> List[Dict[str, Any]]:
-        """Lists recent resident, pet, and wildlife snapshot events from VM 102."""
+        """Lists recent resident, pet, and wildlife snapshot events from the engine host."""
         sightings = []
         try:
             import subprocess
@@ -121,7 +121,7 @@ class HomePresenceHub:
                 "print(json.dumps(res))\n"
                 "\""
             )
-            cmd = fleet_config.ssh_cmd(remote_script, target=self.vm102_ssh_host)
+            cmd = fleet_config.ssh_cmd(remote_script, target=self.engine_ssh_host)
             sub = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
             if sub.returncode == 0 and sub.stdout.strip():
                 items = json.loads(sub.stdout)
@@ -254,11 +254,12 @@ class HomePresenceHub:
                              if eid.startswith("device_tracker.") and "phone" in eid), "unknown")
             ha_info["owner_phone"] = phone_st
 
-            climate_st = states.get("climate.nest_thermostat", {})
+            first = lambda domain: next((s for eid, s in sorted(states.items()) if eid.startswith(domain + ".")), {})   # noqa: E731
+            climate_st = first("climate")      # the home's thermostat: its first climate entity
             ha_info["thermostat_temp"] = climate_st.get("attributes", {}).get("current_temperature", "unknown")
             ha_info["thermostat_state"] = climate_st.get("state", "unknown")
 
-            weather_st = states.get("weather.forecast_home", {})
+            weather_st = first("weather")
             ha_info["weather"] = weather_st.get("state", "unknown")
             ha_info["weather_temp"] = weather_st.get("attributes", {}).get("temperature", "unknown")
         except Exception as e:

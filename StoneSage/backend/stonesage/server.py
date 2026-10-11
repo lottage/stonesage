@@ -1010,7 +1010,7 @@ def load_dynamic_tools_and_skills() -> Dict[str, Any]:
                     "name": t.get("name"),
                     "description": t.get("description", ""),
                     "inputSchema": t.get("inputSchema", {}),
-                    "source": "pve-cluster (Live MCP :8765)",
+                    "source": "cluster MCP (live)",
                     "type": "mcp_tool"
                 })
     except Exception:
@@ -1018,7 +1018,6 @@ def load_dynamic_tools_and_skills() -> Dict[str, Any]:
             "/opt/cluster-bridge/mcp_server.py",
             "server setup/cluster-bridge/mcp_server.py",
             "../server setup/cluster-bridge/mcp_server.py",
-            "hivemind-cluster-stack/core/mcp_server.py"
         ]
         for mp in mcp_paths:
             if os.path.exists(mp):
@@ -1045,7 +1044,7 @@ def load_dynamic_tools_and_skills() -> Dict[str, Any]:
                                         "name": t.get("name"),
                                         "description": t.get("description", ""),
                                         "inputSchema": t.get("inputSchema", {}),
-                                        "source": "pve-cluster (Local Manifest)",
+                                        "source": "cluster MCP (local manifest)",
                                         "type": "mcp_tool"
                                     })
                                 break
@@ -1076,7 +1075,6 @@ def load_dynamic_tools_and_skills() -> Dict[str, Any]:
         os.path.expanduser("~/.gemini/antigravity/builtin/skills"),
         "/opt/stonesage/.agents/skills",
         "/root/.gemini/antigravity/builtin/skills",
-        "hivemind-cluster-stack/core/skills"
     ]
     seen_skills = set()
     for s_root in scan_roots:
@@ -1301,7 +1299,7 @@ def get_home_and_ai_activity_log(limit: int = 150, filter_type: str = "all") -> 
     1. Tapo CCTV vigilance & LLM scene grounding via MCP tool 'get_home_vision_log'
     2. Home Assistant AI / LLM / Voice entities diagnostic status (conversation, stt, tts, assist_satellite)
        identifying configured vs. unconfigured / unavailable integrations.
-    3. Local voice accelerator stack status on LXC 121 (Whisper :8200, Kokoro :8300, Wyoming STT :10300, Wyoming Piper :10200).
+    3. Local voice accelerator stack status on the voice host (Whisper :8200, Kokoro :8300, Wyoming STT :10300, Wyoming Piper :10200).
     4. Recent Home Assistant 'Assist' pipeline conversations & voice trigger events from HA logbook.
     Supports filtering by 'all', 'vision', 'ai_voice', or 'diagnostics'.
     """
@@ -2262,7 +2260,7 @@ def get_harness_parameters(harness: str) -> Dict[str, Any]:
         saved = harness_settings.get("openwebui", {})
         return {
             "harness_id": "openwebui",
-            "name": "OpenWebUI (LXC 119)",
+            "name": "OpenWebUI",
             "role": "Web Chat Interface & Pipeline",
             "server_params": {k: saved.get(k, v) for k, v in defaults.items()},
             "sampling_params": {},
@@ -2386,7 +2384,7 @@ _idle_gate = None
 
 
 def _prom_query(expr: str) -> List[Dict[str, Any]]:
-    """One instant query against Prometheus (LXC 129): the result list."""
+    """One instant query against Prometheus (the metrics host): the result list."""
     base = endpoints.url("prometheus", load_config())
     with urllib.request.urlopen(f"{base}/api/v1/query?query={urllib.parse.quote(expr)}", timeout=4) as r:
         return json.load(r)["data"]["result"]
@@ -2542,7 +2540,7 @@ def get_courage_agent():
     global _courage_agent
     with _courage_lock:
         if _courage_agent is None:
-            from stonesage.courage import CourageAgent, CourageDeps, CourageTools
+            from stonesage.courage import CourageAgent, CourageDeps, CourageTools, llm_timeout_s
             home_part = app_ctx.hook("courage_home")   # Computer's house: tools, presence card, reflexes, phone (apps.py)
             if home_part is None:
                 raise RuntimeError("no app provides Computer's home (config.json 'apps' has no 'hearth')")
@@ -2554,8 +2552,10 @@ def get_courage_agent():
                 think_harder_available=_courage_boost_available,
             )
             url = endpoints.url("coordinator", config)
+            from lodestone import system_profile
             _courage_agent = CourageAgent(CourageTools(deps), url, presence_fn=home["presence_fn"],
-                                          runs_on_fn=_courage_runs_on)
+                                          runs_on_fn=_courage_runs_on,
+                                          timeout=llm_timeout_s(config, system_profile.cached_profile()))
             data_dir = _stonesage_data_dir()
             _courage_agent.reflex_resolve = home.get("reflex_resolve")   # the loop has no home imports
             _courage_agent.learned = home.get("learned")
@@ -3414,7 +3414,7 @@ class StoneSageHandler(http.server.SimpleHTTPRequestHandler):
             return
 
         elif path == "/metrics":
-            # Prometheus (LXC 129 scrapes this): counters from the trace since StoneSage started (courage/trace.py),
+            # Prometheus (the metrics host scrapes this): counters from the trace since StoneSage started (courage/trace.py),
             # and the idle gate per GPU (idle_gate.py; cached 20 s, so the 15 s scrape doesn't hammer HA)
             text = get_trace_log().metrics.text()
             try:
@@ -3725,7 +3725,7 @@ class StoneSageHandler(http.server.SimpleHTTPRequestHandler):
                         "id": m_id,
                         "object": "model",
                         "created": int(time.time()),
-                        "owned_by": "pve-cluster"
+                        "owned_by": "cluster"
                     }
                 ]
             })
@@ -4128,7 +4128,6 @@ class StoneSageHandler(http.server.SimpleHTTPRequestHandler):
                 "/mnt/nas",
                 "/mnt/nas/git",
                 REPO_ROOT,
-                os.path.join(REPO_ROOT, "hivemind-cluster-stack"),
                 ROOT_DIR
             ]
             seen_dirs = set()
@@ -4393,7 +4392,7 @@ class StoneSageHandler(http.server.SimpleHTTPRequestHandler):
                 # 1. Query live coordinator models from :8001/v1/models
                 coord_info = {"id": "coordinator", "status": "unknown"}
                 try:
-                    req_c = urllib.request.Request(endpoints.url("coordinator", config) + "/models", headers={"User-Agent": "Aevum-Server"})
+                    req_c = urllib.request.Request(endpoints.url("coordinator", config) + "/models", headers={"User-Agent": "StoneSage-Server"})
                     with urllib.request.urlopen(req_c, timeout=2.5) as resp_c:
                         c_data = json.loads(resp_c.read().decode("utf-8"))
                         if c_data.get("data"):
@@ -4405,7 +4404,7 @@ class StoneSageHandler(http.server.SimpleHTTPRequestHandler):
                 # 2. Query live worker models from :8002/v1/models
                 worker_info = {"id": "worker", "status": "unknown"}
                 try:
-                    req_w = urllib.request.Request(endpoints.url("worker", config) + "/models", headers={"User-Agent": "Aevum-Server"})
+                    req_w = urllib.request.Request(endpoints.url("worker", config) + "/models", headers={"User-Agent": "StoneSage-Server"})
                     with urllib.request.urlopen(req_w, timeout=2.5) as resp_w:
                         w_data = json.loads(resp_w.read().decode("utf-8"))
                         if w_data.get("data"):
@@ -4438,7 +4437,7 @@ class StoneSageHandler(http.server.SimpleHTTPRequestHandler):
                     {"id": "llama_coordinator", "name": f"Coordinator: {system_profile.engine_label(load_config(), 'coordinator')}", "description": "Reasoning, architecture and coding"},
                     {"id": "llama_worker", "name": f"Worker: {system_profile.engine_label(load_config(), 'worker')}", "description": "Fast drafts, utilities and linting"},
                     {"id": "snapdragon", "name": "Snapdragon Edge NPU", "description": "Mobile on-device hardware accelerator"},
-                    {"id": "openwebui", "name": "OpenWebUI (LXC 119)", "description": "Community chat interface on :8080"}
+                    {"id": "openwebui", "name": "OpenWebUI", "description": "Community chat interface on :8080"}
                 ]
 
                 available_backends = [
@@ -8045,6 +8044,8 @@ from stonesage.apps import AppContext, LiveRef, load_apps  # noqa: E402
 app_ctx = AppContext(config, ROOT_DIR, _stonesage_data_dir, tool_registry=tool_registry, services={
     "load_config": load_config,
     "save_config": save_config,
+    "config_file": CONFIG_FILE,                                   # where save_config writes (setup wizard backs it up)
+    "courage_agent_if_built": lambda: _courage_agent,             # None until first asked for: never builds it
     "get_courage_agent": get_courage_agent,
     "get_trace_log": get_trace_log,
     "get_engine_lease": get_engine_lease,
@@ -8062,6 +8063,9 @@ if __name__ == "__main__":
     if _on_default:   # a spread-out install that forgot a key would otherwise talk to localhost without a word
         logger.warning("Not set in config.json, so on their localhost default: %s (lodestone/endpoints.py)",
                        ", ".join(_on_default))
+    _optional = endpoints.missing(config, optional=True)
+    if _optional:     # not needed unless the install uses them: say so once, quietly
+        logger.info("Optional services not configured (localhost default if you start one): %s", ", ".join(_optional))
 
     http.server.ThreadingHTTPServer.allow_reuse_address = True
     try:

@@ -109,12 +109,18 @@ def load(path: str = CONFIG_FILE) -> Dict[str, Any]:
         return {}
 
 
+def backup_file(path: str) -> Optional[str]:
+    """Copy an existing file to <path>.bak-<time> (the setup wizard shares this). Returns the copy's path, None if no file."""
+    if not os.path.exists(path):
+        return None
+    backup = f"{path}.bak-{time.strftime('%Y%m%d-%H%M%S')}"
+    shutil.copyfile(path, backup)
+    return backup
+
+
 def write(cfg: Dict[str, Any], path: str = CONFIG_FILE) -> Optional[str]:
     """Write config.json; the old one is kept as config.json.bak-<time>. Returns the backup's path (None: no old file)."""
-    backup = None
-    if os.path.exists(path):
-        backup = f"{path}.bak-{time.strftime('%Y%m%d-%H%M%S')}"
-        shutil.copyfile(path, backup)
+    backup = backup_file(path)
     tmp = path + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(cfg, f, indent=2, ensure_ascii=False)
@@ -145,6 +151,9 @@ def ask(cfg: Dict[str, Any], keys: List[str], read: Callable[[str], str] = input
 
 def check(cfg: Dict[str, Any]) -> List[str]:
     lines = [f"still on a default (not set in config.json): {', '.join(endpoints.missing(cfg)) or 'nothing'}"]
+    optional = endpoints.missing(cfg, optional=True)
+    if optional:
+        lines.append(f"optional, not set (fine unless you use them): {', '.join(optional)}")
     gaps = missing_questions(cfg)
     if gaps:
         lines.append(f"unanswered: {', '.join(gaps)}")

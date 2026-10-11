@@ -46,7 +46,7 @@ class NodeScheduler:
         """
         Acquires an execution slot on the most suitable available node.
         Prioritizes the edge node pool for parallel subagents,
-        and VM 102 Primary Accelerator for coordinator architecture tasks.
+        and engine host Primary Accelerator for coordinator architecture tasks.
         """
         async with self._lock:
             # 1. Evaluate candidate nodes matching preferred role

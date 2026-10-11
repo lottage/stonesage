@@ -176,7 +176,7 @@ export function onHarnessNodeSelected(nodeId, triggerRescan = true) {
     if (vramSelect) {
       if (nodeId === 'node1_primary') vramSelect.value = '12.0';
       else if (nodeId === 'node1_secondary') vramSelect.value = '8.0';
-      else if (nodeId === 'vm102_dual') vramSelect.value = '20.0';
+      else if (nodeId === 'dual_gpu') vramSelect.value = '20.0';
       else if (nodeId.includes('ally')) vramSelect.value = '16.0';
       else if (nodeId === 'local_workstation') vramSelect.value = '32.0';
     }
@@ -184,7 +184,7 @@ export function onHarnessNodeSelected(nodeId, triggerRescan = true) {
 
   // Dual-GPU Split row visibility
   if (dualSplitGroup) {
-    dualSplitGroup.style.display = (nodeId === 'vm102_dual') ? 'block' : 'none';
+    dualSplitGroup.style.display = (nodeId === 'dual_gpu') ? 'block' : 'none';
   }
 
   if (triggerRescan) {
@@ -368,7 +368,7 @@ export function onHarnessModelSelected(modelKey) {
   if (vramSelect) {
     if (selectedNodeId === 'node1_secondary') {
       vramSelect.value = '8.0';
-    } else if (selectedNodeId === 'vm102_dual') {
+    } else if (selectedNodeId === 'dual_gpu') {
       vramSelect.value = '20.0';
     } else {
       vramSelect.value = '12.0';
@@ -416,7 +416,7 @@ export async function deploySelectedModelToNode() {
   const parallelSlots = parseInt(slotsSlider?.value || document.getElementById('num-slots')?.value || '1', 10);
   const cacheTypeK = document.getElementById('capacity-k-quant')?.value || document.getElementById('capacity-kv-quant')?.value || 'f16';
   const cacheTypeV = document.getElementById('capacity-v-quant')?.value || document.getElementById('capacity-kv-quant')?.value || 'f16';
-  const dualSplit = (selectedNodeId === 'vm102_dual') ? (dualSplitInput?.value || '12,8') : null;
+  const dualSplit = (selectedNodeId === 'dual_gpu') ? (dualSplitInput?.value || '12,8') : null;
 
   const mlock = !!document.getElementById('harness-mlock')?.checked;
   const mmap = document.getElementById('harness-mmap')?.checked !== false;

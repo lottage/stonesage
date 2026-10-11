@@ -7,6 +7,7 @@ rewritten here; edit it in the cockpit or in the volume.
     COORDINATOR_URL / WORKER_URL / EMBEDDER_URL / VISION_URL   -> cluster.<role>_url   (the engine services)
     STONESAGE_APPS   comma list of apps to load ("hearth"; empty = none)  -> apps
     HASS_URL / HASS_TOKEN                                         -> homeassistant.url / .token (only when set)
+    COORDINATOR_CPU  1 when the coordinator engine runs on a CPU   -> cluster.coordinator_cpu (longer waits for its answers)
     TZ                                                            -> server.timezone (when set and not UTC)
 
 The token is read from the environment only to be written into config.json inside the volume, where StoneSage keeps it
@@ -28,6 +29,8 @@ def seed_config(env: Mapping[str, str]) -> Dict[str, Any]:
     cfg: Dict[str, Any] = {"server": {"host": "0.0.0.0", "port": 8888}}
     cfg["apps"] = [a.strip() for a in env.get("STONESAGE_APPS", "").split(",") if a.strip()]
     cluster = {"%s_url" % role: env[var].strip() for role, var in ROLE_ENV.items() if env.get(var, "").strip()}
+    if env.get("COORDINATOR_CPU", "").strip().lower() in ("1", "true", "yes", "on"):
+        cluster["coordinator_cpu"] = True
     if cluster:
         cfg["cluster"] = cluster
     ha = {k: env[var].strip() for k, var in (("url", "HASS_URL"), ("token", "HASS_TOKEN")) if env.get(var, "").strip()}

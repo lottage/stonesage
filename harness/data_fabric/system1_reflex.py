@@ -407,79 +407,19 @@ class System1ReflexEngine:
         return None
 
     # =================================================================
-    # SEEDING DEFAULT PROTOTYPES (Instant Homelab Intelligence)
+    # SEEDING DEFAULT PROTOTYPES (the site's own phrases, from config.json)
     # =================================================================
     def seed_default_prototypes(self):
-        """Seeds standard homelab intents into Qdrant & Valkey."""
-        prototypes = [
-            # Office & Desk Lights
-            {
-                "phrase": "turn off office light",
-                "domain": "light",
-                "service": "turn_off",
-                "service_data": {"entity_id": "light.office_lights"},
-                "intent_label": "office_lights_off"
-            },
-            {
-                "phrase": "turn on office light",
-                "domain": "light",
-                "service": "turn_on",
-                "service_data": {"entity_id": "light.office_lights", "brightness": 255},
-                "intent_label": "office_lights_on"
-            },
-            {
-                "phrase": "dim office lights",
-                "domain": "light",
-                "service": "turn_on",
-                "service_data": {"entity_id": "light.office_lights", "brightness": 64},
-                "intent_label": "office_lights_dim"
-            },
-            # Living Room & Night Mode
-            {
-                "phrase": "living room lights off",
-                "domain": "light",
-                "service": "turn_off",
-                "service_data": {"entity_id": "light.living_room_lights"},
-                "intent_label": "living_room_off"
-            },
-            {
-                "phrase": "night mode bedtime activate sleep",
-                "domain": "scene",
-                "service": "turn_on",
-                "service_data": {"entity_id": "scene.night_mode"},
-                "intent_label": "activate_night_mode"
-            },
-            {
-                "phrase": "nightlight pathway on",
-                "domain": "light",
-                "service": "turn_on",
-                "service_data": {"entity_id": "light.hallway_nightlight", "brightness": 20},
-                "intent_label": "nightlight_on"
-            },
-            # HVAC & Thermostat
-            {
-                "phrase": "set temperature to 70 degrees",
-                "domain": "climate",
-                "service": "set_temperature",
-                "service_data": {"entity_id": "climate.nest_thermostat", "temperature": 70},
-                "intent_label": "thermostat_set_70"
-            },
-            {
-                "phrase": "make it cooler thermostat down",
-                "domain": "climate",
-                "service": "set_temperature",
-                "service_data": {"entity_id": "climate.nest_thermostat", "temperature": 68},
-                "intent_label": "thermostat_cool"
-            },
-            # Smart Plugs & Appliances
-            {
-                "phrase": "check dryer status power",
-                "domain": "sensor",
-                "service": "get_state",
-                "service_data": {"entity_id": "sensor.lg_smart_dryer_power"},
-                "intent_label": "dryer_status"
-            }
-        ]
+        """Seeds the site's reflex intents into Qdrant & Valkey: config.json "system1_prototypes", a list of
+        {"phrase": "turn off office light", "domain": "light", "service": "turn_off",
+         "service_data": {"entity_id": "light.office"}, "intent_label": "office_lights_off"}. None = nothing seeded
+        (no entity ids are built in)."""
+        from ..config import _load_stonesage_config
+        prototypes = [p for p in (_load_stonesage_config().get("system1_prototypes") or [])
+                      if isinstance(p, dict) and p.get("phrase") and p.get("domain") and p.get("service")]
+        for p in prototypes:
+            p.setdefault("service_data", {})
+            p.setdefault("intent_label", p["phrase"].replace(" ", "_"))
 
         # Seed into Valkey (Pass 0) and Qdrant (Pass 1)
         for p in prototypes:

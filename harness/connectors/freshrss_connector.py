@@ -1,5 +1,5 @@
 """
-FreshRSS Connector (LXC 108 :80).
+FreshRSS Connector (port 80).
 Allows background agents to pull unread tech/AI preprints and articles for ambient intelligence.
 """
 

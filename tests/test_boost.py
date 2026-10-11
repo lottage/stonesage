@@ -184,7 +184,7 @@ class TestRouter(unittest.TestCase):
 
         def terms():
             if names is None:
-                raise OSError("VM 102 unreachable")
+                raise OSError("the engine host unreachable")
             return names
         r = BoostRouter(lambda: cfg(), None, http=FakeHttp(), env=ENV, clock=Clock(), home_terms=terms)
         self.assertIn("bella", r.home_terms())

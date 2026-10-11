@@ -2,7 +2,7 @@
 Multi-Tier Sovereign Agent Backup & Disaster Recovery Fabric.
 Secures Sovereign Agent DNA (.agent.dna) across three resilient tiers:
 - Tier 1: Local NAS / Redundant Storage (/mnt/nas, local vault)
-- Tier 2: CouchDB / Obsidian Document Sync (LXC 116 :5984 & Obsidian Vault)
+- Tier 2: CouchDB / Obsidian Document Sync (the CouchDB host :5984 & Obsidian Vault)
 - Tier 3: Off-site Cloud Object Storage (Cloudflare R2 / AWS S3 / MinIO API)
 
 Ensures users can carry forward their sovereign agents forever into the AGI future,

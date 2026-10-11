@@ -564,7 +564,7 @@ class CommandRegistry:
         sub = args[0] if args else "status"
         if sub == "status":
             st = hub.get_job_status()
-            console.print(Panel(f"[bold]Training Pipeline Status:[/bold] {st.get('status', 'idle')}\n[dim]VM 102 /opt/pipeline-gguf-trainer[/dim]", border_style="magenta"))
+            console.print(Panel(f"[bold]Training Pipeline Status:[/bold] {st.get('status', 'idle')}\n[dim]/opt/pipeline-gguf-trainer[/dim]", border_style="magenta"))
         elif sub == "invariants":
             console.print("[bold cyan][INVARIANTS] Running 10 Golden Safety Invariants...[/bold cyan]")
             res = hub.run_golden_invariants()
@@ -1118,7 +1118,7 @@ class CommandRegistry:
         elif sub in ("benchmark", "bench"):
             console.print(Panel(
                 "[bold cyan]⚡ EMPIRICAL RUNTIME BENCHMARK HARNESS[/bold cyan]\n"
-                "[dim]Running multi-context TTFT & prefill/generation throughput suite against active VM 102 port :8001...[/dim]",
+                "[dim]Running multi-context TTFT & prefill/generation throughput suite against the active engine host (port :8001)...[/dim]",
                 border_style="cyan"
             ))
             import os
@@ -1166,7 +1166,7 @@ class CommandRegistry:
             )
         console.print(table)
 
-        # 2. Autonomous Thinking Engine Activity (VM 102 :8765)
+        # 2. Autonomous Thinking Engine Activity (port 8765)
         try:
             req = urllib.request.Request(f"{fleet_config.cluster_mcp_url}/status", headers={"User-Agent": "Harness-CLI"})
             with urllib.request.urlopen(req, timeout=1.5) as resp:
@@ -1186,7 +1186,7 @@ class CommandRegistry:
                         f"[white]• Total Tokens:[/white] [yellow]{tokens:,}[/yellow] tokens generated across the cluster\n"
                         f"[white]• Current Focus:[/white] [magenta]{domain}[/magenta]\n"
                         f"[white]• Last Domain:[/white] [dim]{last_domain}[/dim]\n"
-                        f"[dim]Background loop explores architecture limits & adversarial edge-cases every 120s on VM 102.[/dim]",
+                        f"[dim]Background loop explores architecture limits & adversarial edge-cases every 120s on the engine host.[/dim]",
                         title="24/7 Autonomous Thinking Machine",
                         border_style="magenta"
                     ))

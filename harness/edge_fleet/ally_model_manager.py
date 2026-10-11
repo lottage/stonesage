@@ -51,7 +51,7 @@ class EdgeFleetModelManager:
         node = fleet_config.nodes.get(self.node_id)
         return node.name if node else f"Node {self.node_id}"
 
-    def _scan_vm102_models(self) -> List[Dict[str, Any]]:
+    def _scan_engine_host_models(self) -> List[Dict[str, Any]]:
         """GGUF models on the inference host, with metadata from each file's header (StoneSage system_profile)."""
         from ..config import _live_models
         role = "worker" if self.node_id == "node1_secondary" else "coordinator"
@@ -77,7 +77,7 @@ class EdgeFleetModelManager:
         """The node is one of the llama.cpp engines (managed over SSH), not an LM Studio node. Matched by host AND port:
         on a one-box install everything is on 127.0.0.1, and a substring test on the host called every local node an
         engine."""
-        if (node_id or self.node_id) in ("node1_primary", "node1_secondary", "vm102_dual"):
+        if (node_id or self.node_id) in ("node1_primary", "node1_secondary", "dual_gpu"):
             return True
         u = urllib.parse.urlparse(self.node_url)
         return any((u.hostname, u.port) == (urllib.parse.urlparse(e).hostname, urllib.parse.urlparse(e).port)
@@ -85,16 +85,16 @@ class EdgeFleetModelManager:
 
     def list_local_models(self) -> List[Dict[str, Any]]:
         """
-        Polls the native node endpoint (LM Studio v0.3+ /api/v1/models or VM 102 local models)
+        Polls the native node endpoint (LM Studio v0.3+ /api/v1/models or the engine host local models)
         to retrieve all local models, architectures, quantizations, byte sizes, and active instances.
         """
         if self._is_engine_node():
-            return self._scan_vm102_models()
+            return self._scan_engine_host_models()
 
         api_url = f"{self.node_url}/api/v1/models"
         models_out = []
         try:
-            req = urllib.request.Request(api_url, headers={"User-Agent": "Aevum-FleetManager"})
+            req = urllib.request.Request(api_url, headers={"User-Agent": "StoneSage-FleetManager"})
             with urllib.request.urlopen(req, timeout=4.0) as resp:
                 if resp.status == 200:
                     data = json.loads(resp.read().decode("utf-8"))
@@ -124,7 +124,7 @@ class EdgeFleetModelManager:
         # Fallback to standard OpenAI /v1/models if native API is unreachable
         fallback_url = f"{self.node_url}/v1/models"
         try:
-            req = urllib.request.Request(fallback_url, headers={"User-Agent": "Aevum-FleetManager"})
+            req = urllib.request.Request(fallback_url, headers={"User-Agent": "StoneSage-FleetManager"})
             with urllib.request.urlopen(req, timeout=3.0) as resp:
                 if resp.status == 200:
                     data = json.loads(resp.read().decode("utf-8"))
@@ -290,12 +290,12 @@ class EdgeFleetModelManager:
         node_id = target_node or self.node_id
         if self._is_engine_node(node_id):
             svc = "llama-worker.service" if node_id == "node1_secondary" else "llama-coordinator.service"
-            if node_id == "vm102_dual":
+            if node_id == "dual_gpu":
                 svc = "llama-coordinator.service llama-worker.service"
             try:
                 cmd = fleet_config.ssh_cmd("sudo", "systemctl", "stop", *svc.split())
                 sub = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
-                return {"ok": sub.returncode == 0, "message": f"Successfully stopped {svc} on VM 102."}
+                return {"ok": sub.returncode == 0, "message": f"Successfully stopped {svc} on the engine host."}
             except Exception as e:
                 return {"ok": False, "error": str(e)}
         else:
@@ -322,16 +322,16 @@ class EdgeFleetModelManager:
                         logger.warning(f"Error unloading instance '{inst_id}': {e}")
         return unloaded_any
 
-    def _load_vm102_model(self, model_key: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        """Dispatches model reload on VM 102 via systemd service reconfiguration."""
+    def _load_engine_host_model(self, model_key: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Dispatches model reload on the engine host via systemd service reconfiguration."""
         params = params or {}
         # Locate model path
-        models = self._scan_vm102_models()
+        models = self._scan_engine_host_models()
         target_m = next((m for m in models if m["key"] == model_key or m["name"] == model_key or model_key in m["path"]), None)
         model_path = target_m["path"] if target_m else (model_key if "/" in model_key else f"/opt/models/{model_key}")
 
         is_secondary = (self.node_id == "node1_secondary")
-        is_dual = (self.node_id == "vm102_dual" or params.get("dual_gpu_split") or params.get("tensor_split") is not None)
+        is_dual = (self.node_id == "dual_gpu" or params.get("dual_gpu_split") or params.get("tensor_split") is not None)
         service_name = "llama-worker.service" if is_secondary else "llama-coordinator.service"
         port = 8002 if is_secondary else 8001
         alias = "worker" if is_secondary else ("moe" if is_dual else "coordinator")
@@ -577,7 +577,7 @@ print("SUCCESSFULLY_RELOADED")
             )
             return {"ok": False, "error": f"Service restart succeeded, but :{port}/props timed out after 100s. Diagnostic logs:\n{check_sub.stdout}"}
         except Exception as e:
-            return {"ok": False, "error": f"Failed to reload model on VM 102: {e}"}
+            return {"ok": False, "error": f"Failed to reload model on the engine host: {e}"}
 
     def load_model(
         self,
@@ -595,7 +595,7 @@ print("SUCCESSFULLY_RELOADED")
         **kwargs
     ) -> Dict[str, Any]:
         """
-        Dispatches a model load request to LM Studio v0.3+ on the node or llama-server on VM 102.
+        Dispatches a model load request to LM Studio v0.3+ on the node or llama-server on the engine host.
         Supports both positional and keyword invocation styles:
           - self.load_model(model_key, params=params, timeout=120, unload_prior=...)
           - ally_model_manager.load_model(target_node=..., model_key=..., context_length=..., ...)
@@ -603,13 +603,13 @@ print("SUCCESSFULLY_RELOADED")
         """
         if len(args) == 1:
             val = args[0]
-            if val in fleet_config.nodes or val in ("node1_primary", "node1_secondary", "vm102_dual", "node2_edge", "local_workstation"):
+            if val in fleet_config.nodes or val in ("node1_primary", "node1_secondary", "dual_gpu", "node2_edge", "local_workstation"):
                 target_node = val
             else:
                 model_key = val
         elif len(args) >= 2:
             arg0, arg1 = args[0], args[1]
-            if arg0 in fleet_config.nodes or arg0 in ("node1_primary", "node1_secondary", "vm102_dual", "node2_edge", "local_workstation"):
+            if arg0 in fleet_config.nodes or arg0 in ("node1_primary", "node1_secondary", "dual_gpu", "node2_edge", "local_workstation"):
                 target_node = arg0
                 model_key = arg1
             else:
@@ -651,7 +651,7 @@ print("SUCCESSFULLY_RELOADED")
             return {"ok": False, "error": "No model_key specified for load_model"}
 
         if self._is_engine_node():
-            return self._load_vm102_model(model_key, p)
+            return self._load_engine_host_model(model_key, p)
 
         if unload_prior:
             self.unload_active_instances()
@@ -666,7 +666,7 @@ print("SUCCESSFULLY_RELOADED")
         req = urllib.request.Request(
             load_url,
             data=json.dumps(body).encode("utf-8"),
-            headers={"Content-Type": "application/json", "User-Agent": "Aevum-FleetManager"},
+            headers={"Content-Type": "application/json", "User-Agent": "StoneSage-FleetManager"},
             method="POST"
         )
         try:
@@ -1019,15 +1019,15 @@ print("SUCCESSFULLY_RELOADED")
             slots_str = Prompt.ask(
                 "[bold green]Parallel Execution Slots (1-8)[/bold green]",
                 choices=["1", "2", "3", "4", "8"],
-                default="1" if self.node_id in ("node1_primary", "vm102_dual") else "2"
+                default="1" if self.node_id in ("node1_primary", "dual_gpu") else "2"
             )
 
             kv_quant = "q8_0"
-            if self.node_id in ("node1_primary", "node1_secondary", "vm102_dual"):
+            if self.node_id in ("node1_primary", "node1_secondary", "dual_gpu"):
                 kv_quant = Prompt.ask(
                     "[bold green]KV Cache Quantization[/bold green] (q8_0, q4_0, f16)",
                     choices=["q8_0", "q4_0", "f16"],
-                    default="q8_0" if self.node_id != "vm102_dual" else "q4_0"
+                    default="q8_0" if self.node_id != "dual_gpu" else "q4_0"
                 )
 
             params = {
@@ -1039,7 +1039,7 @@ print("SUCCESSFULLY_RELOADED")
                 "parallel": int(slots_str),
                 "cache_type_k": kv_quant,
                 "cache_type_v": kv_quant,
-                "dual_gpu_split": (self.node_id == "vm102_dual")
+                "dual_gpu_split": (self.node_id == "dual_gpu")
             }
 
         # 3. Confirmation & Execution

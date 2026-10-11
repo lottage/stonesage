@@ -46,7 +46,7 @@ class Household:
         return names[-1], names[0]
 
     def camera_key(self, label: Optional[str]) -> str:
-        """A sighting's camera label ('Kitchen/Living', 'Driveway/Front Door') -> camera key; the default camera if none."""
+        """A sighting's camera label ('Living', 'Driveway') -> camera key; the default camera if none."""
         first = (label or "").lower().split("/")[0].split()[0] if (label or "").strip() else ""
         fallback = self.default_camera or next(iter(self.cameras), "")
         return next((k for k in self.cameras if first and k.startswith(first)), fallback)

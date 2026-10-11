@@ -1,13 +1,16 @@
 """
 Landscape, Garden & Irrigation Automation Engine.
-Controls the 4-zone smart irrigation valves via Home Assistant (VM 103 :8123):
-- Garden Zone: valve.front_of_house_hoses_garden_zone
-- Side Yard Zone: valve.front_of_house_hoses_side_yard_zone
-- Back Yard Zone: valve.front_of_house_hoses_back_yard_zone
-- Handheld Zone: valve.front_of_house_hoses_handheld_zone
+Controls smart irrigation valves through Home Assistant. The zones and entities are the site's own, from config.json:
+
+    "garden": {
+      "zones": {"front": {"name": "Front Zone", "valve": "valve.front_zone", "smart_switch": "switch.front_smart",
+                          "history_sensor": "sensor.front_history", "default_duration_mins": 15, "description": "..."}},
+      "rain_delay_switch": "switch.rain_delay", "battery_sensor": "sensor.controller_battery",
+      "programs": {"whole_yard": "switch.program_whole_yard"}
+    }
 
 Integrates smart watering programs, battery telemetry, rain delay enforcement,
-weather-based forecast inhibition, and landscape planning logs.
+weather-based forecast inhibition, and landscape planning logs. Without a "garden" block there are no zones.
 """
 
 import os
@@ -17,49 +20,19 @@ import logging
 import threading
 from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
+from ..config import _load_stonesage_config
 from ..connectors.hass_connector import hass_connector
 
 logger = logging.getLogger("Harness.LandscapeGardenEngine")
 
-ZONE_ENTITY_MAP = {
-    "garden": {
-        "name": "Garden Zone",
-        "valve": "valve.front_of_house_hoses_garden_zone",
-        "smart_switch": "switch.front_of_house_hoses_garden_smart_watering",
-        "history_sensor": "sensor.front_of_house_hoses_garden_zone_history",
-        "default_duration_mins": 15,
-        "description": "Vegetable garden beds and perimeter planters"
-    },
-    "side_yard": {
-        "name": "Side Yard Zone",
-        "valve": "valve.front_of_house_hoses_side_yard_zone",
-        "smart_switch": "switch.front_of_house_hoses_side_yard_smart_watering",
-        "history_sensor": "sensor.front_of_house_hoses_side_yard_zone_history",
-        "default_duration_mins": 15,
-        "description": "Side walkway lawn and shade beds"
-    },
-    "back_yard": {
-        "name": "Back Yard Zone",
-        "valve": "valve.front_of_house_hoses_back_yard_zone",
-        "smart_switch": "switch.front_of_house_hoses_back_yard_smart_watering",
-        "history_sensor": "sensor.front_of_house_hoses_back_yard_zone_history",
-        "default_duration_mins": 20,
-        "description": "Main backyard lawn and tree perimeter"
-    },
-    "handheld": {
-        "name": "Handheld Zone",
-        "valve": "valve.front_of_house_hoses_handheld_zone",
-        "smart_switch": "switch.front_of_house_hoses_handheld_smart_watering",
-        "history_sensor": "sensor.front_of_house_hoses_handheld_zone_history",
-        "default_duration_mins": 10,
-        "description": "Front porch and handheld hose line"
-    }
-}
 
-RAIN_DELAY_SWITCH = "switch.front_of_house_hoses_rain_delay"
-BATTERY_SENSOR = "sensor.front_of_house_hoses_battery_level"
-WHOLE_YARD_PROGRAM = "switch.front_porch_front_of_house_hoses_whole_yard_program"
-AFTERNOON_PROGRAM = "switch.front_porch_front_of_house_hoses_backyard_afternoon_program"
+def garden_config() -> Dict[str, Any]:
+    return _load_stonesage_config().get("garden") or {}
+
+
+def zone_map() -> Dict[str, Dict[str, Any]]:
+    return {k: dict({"default_duration_mins": 15, "description": ""}, **v) for k, v in (garden_config().get("zones") or {}).items()}
+
 
 GARDEN_LOG_FILE = os.path.join(os.path.dirname(__file__), "..", "..", "data", "garden_log.json")
 
@@ -69,13 +42,7 @@ class LandscapeGardenEngine:
         self._lock = threading.Lock()
         os.makedirs(os.path.dirname(os.path.abspath(GARDEN_LOG_FILE)), exist_ok=True)
         if not os.path.exists(GARDEN_LOG_FILE):
-            self._save_log([
-                {
-                    "timestamp": "2026-09-18 10:00:00",
-                    "event": "Automated Morning Cycle",
-                    "notes": "Garden, Side Yard, and Back Yard watered for 15 minutes each. Soil moisture optimal."
-                }
-            ])
+            self._save_log([])
 
     def _load_log(self) -> List[Dict[str, Any]]:
         try:
@@ -101,14 +68,14 @@ class LandscapeGardenEngine:
         self._save_log(entries)
 
     def get_garden_status(self) -> Dict[str, Any]:
-        """Polls Home Assistant for complete 4-zone irrigation status."""
+        """Polls Home Assistant for complete irrigation status."""
         states = {s["entity_id"]: s for s in hass_connector.get_all_states()}
         
         zones_out = {}
-        for key, info in ZONE_ENTITY_MAP.items():
+        for key, info in zone_map().items():
             valve_state = states.get(info["valve"], {}).get("state", "unknown")
-            smart_state = states.get(info["smart_switch"], {}).get("state", "unknown")
-            history_state = states.get(info["history_sensor"], {}).get("state", "unknown")
+            smart_state = states.get(info.get("smart_switch", ""), {}).get("state", "unknown")
+            history_state = states.get(info.get("history_sensor", ""), {}).get("state", "unknown")
             
             is_open = valve_state in ("open", "opening")
             zones_out[key] = {
@@ -122,18 +89,16 @@ class LandscapeGardenEngine:
                 "default_duration_mins": info["default_duration_mins"]
             }
 
-        battery_val = states.get(BATTERY_SENSOR, {}).get("state", "unknown")
-        rain_delay_val = states.get(RAIN_DELAY_SWITCH, {}).get("state", "unknown") == "on"
-        whole_yard_val = states.get(WHOLE_YARD_PROGRAM, {}).get("state", "unknown") == "on"
-        afternoon_val = states.get(AFTERNOON_PROGRAM, {}).get("state", "unknown") == "on"
+        gc = garden_config()
+        battery_val = states.get(gc.get("battery_sensor", ""), {}).get("state", "unknown")
+        rain_delay_val = states.get(gc.get("rain_delay_switch", ""), {}).get("state", "unknown") == "on"
+        programs = {name: states.get(entity, {}).get("state", "unknown") == "on"
+                    for name, entity in (gc.get("programs") or {}).items()}
 
         return {
             "battery_level": int(battery_val) if str(battery_val).isdigit() else battery_val,
             "rain_delay_active": rain_delay_val,
-            "programs": {
-                "whole_yard": whole_yard_val,
-                "backyard_afternoon": afternoon_val
-            },
+            "programs": programs,
             "zones": zones_out,
             "recent_log": self._load_log()[-8:],
             "timestamp": datetime.now().strftime("%Y-%m-%d %I:%M:%S %p")
@@ -141,10 +106,11 @@ class LandscapeGardenEngine:
 
     def open_zone(self, zone_key: str, duration_minutes: Optional[int] = None) -> Dict[str, Any]:
         """Opens a specific irrigation zone with an automatic safety shutoff timer."""
-        if zone_key not in ZONE_ENTITY_MAP:
-            return {"ok": False, "error": f"Unknown zone '{zone_key}'. Valid: {list(ZONE_ENTITY_MAP.keys())}"}
+        zones = zone_map()
+        if zone_key not in zones:
+            return {"ok": False, "error": f"Unknown zone '{zone_key}'. Valid: {list(zones)}"}
 
-        info = ZONE_ENTITY_MAP[zone_key]
+        info = zones[zone_key]
         duration = duration_minutes or info["default_duration_mins"]
         duration = max(1, min(duration, 60))  # Bound between 1 and 60 minutes for safety
 
@@ -169,10 +135,11 @@ class LandscapeGardenEngine:
 
     def close_zone(self, zone_key: str) -> Dict[str, Any]:
         """Closes an irrigation zone valve immediately."""
-        if zone_key not in ZONE_ENTITY_MAP:
+        zones = zone_map()
+        if zone_key not in zones:
             return {"ok": False, "error": f"Unknown zone '{zone_key}'"}
 
-        info = ZONE_ENTITY_MAP[zone_key]
+        info = zones[zone_key]
         with self._lock:
             if zone_key in self._active_timers:
                 self._active_timers[zone_key].cancel()
@@ -186,15 +153,18 @@ class LandscapeGardenEngine:
     def close_all_zones(self) -> Dict[str, Any]:
         """Emergency or manual shutoff of all 4 irrigation zones."""
         results = {}
-        for k in ZONE_ENTITY_MAP:
+        for k in zone_map():
             results[k] = self.close_zone(k)
-        self.add_garden_log("All Zones Closed", "Emergency/manual shutoff executed across all 4 irrigation zones.")
+        self.add_garden_log("All Zones Closed", "Emergency/manual shutoff executed across all irrigation zones.")
         return {"ok": True, "results": results}
 
     def set_rain_delay(self, enabled: bool = True) -> Dict[str, Any]:
         """Enables or disables Home Assistant rain delay for all zones."""
         service = "turn_on" if enabled else "turn_off"
-        resp = hass_connector.call_service("switch", service, {"entity_id": RAIN_DELAY_SWITCH})
+        switch = garden_config().get("rain_delay_switch")
+        if not switch:
+            return {"ok": False, "error": "no rain_delay_switch in config.json garden"}
+        resp = hass_connector.call_service("switch", service, {"entity_id": switch})
         self.add_garden_log(f"Rain Delay {'Activated' if enabled else 'Deactivated'}", f"Switch set to {'on' if enabled else 'off'}.")
         return {"ok": resp.get("ok", False), "rain_delay": enabled}
 

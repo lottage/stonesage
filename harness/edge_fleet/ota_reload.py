@@ -1,6 +1,6 @@
 """
 Over-The-Air (OTA) Model Hot-Reload Loop for Edge Fleet.
-Coordinates automatic distribution of newly fine-tuned GGUF models from VM 102
+Coordinates automatic distribution of newly fine-tuned GGUF models from the engine host
 to distributed edge nodes (handhelds, Raspberry Pis, mini-PCs) with zero-downtime hot-swapping.
 """
 

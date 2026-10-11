@@ -25,8 +25,8 @@ class GGUFVariant:
     download_url: str
     fits_rog_ally_extreme: bool = True
     fits_rog_ally_x: bool = True  # Backward-compatible alias
-    fits_vm102_primary: bool = True
-    fits_vm102_secondary: bool = True
+    fits_primary: bool = True
+    fits_secondary: bool = True
     recommended_context: int = 8192
 
 
@@ -127,8 +127,8 @@ class HuggingFaceBrowser:
                         download_url=f"https://huggingface.co/{model_id}/resolve/main/{path}",
                         fits_rog_ally_extreme=fits_ally,
                         fits_rog_ally_x=fits_ally,
-                        fits_vm102_primary=fits_vm_p,
-                        fits_vm102_secondary=fits_vm_s,
+                        fits_primary=fits_vm_p,
+                        fits_secondary=fits_vm_s,
                         recommended_context=16384 if size_gb < 6 else 8192,
                     ))
         except Exception as e:

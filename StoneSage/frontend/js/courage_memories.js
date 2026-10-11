@@ -1,6 +1,6 @@
 /**
  * 🧠 Courage's memories (Engine Studio → Engine Console → 🧠 MEMORIES): what Courage has learned about you from
- * conversations (backend courage/memory.py), newest first, each with a Forget button. Notes live only on LXC 120.
+ * conversations (backend courage/memory.py), newest first, each with a Forget button. Notes live only on the StoneSage host.
  * Backend: GET /api/courage/memories, POST /api/courage/memories/forget {id}
  */
 
@@ -28,7 +28,7 @@ function render() {
       <button type="button" class="term-cmd-btn" id="cmem-refresh" style="font-size:0.72rem;">[🔄 REFRESH]</button>
     </div>
     <div style="font-size:0.72rem; color:var(--term-text-muted); margin-bottom:6px;">
-      Kept on LXC 120 only. Home tasks and small talk are not remembered; Computer's own stories never are.
+      Kept on the StoneSage host only. Home tasks and small talk are not remembered; Computer's own stories never are.
     </div>
     ${rows || '<div style="color:var(--term-text-muted); padding:6px 0;">Nothing yet. Talk to him.</div>'}`;
 }

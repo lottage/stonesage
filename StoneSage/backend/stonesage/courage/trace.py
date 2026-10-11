@@ -27,7 +27,7 @@ triggers the objective escalation signals of the stack-limits review, RECORDED O
          tool_error, invalid_args, repeated_call (same tool + arguments twice in a turn), nudged (the model described
          a tool call instead of making it), step_cap, llm_error, empty_answer
 
-The file rotates at 5 MB (one old copy kept). Nothing here leaves LXC 120.
+The file rotates at 5 MB (one old copy kept). Nothing here leaves the StoneSage host.
 """
 
 import json
@@ -144,7 +144,7 @@ def _label(v: Any) -> str:
 
 class TraceMetrics:
     """Counters over every record written since StoneSage started, in Prometheus text format (GET /metrics on
-    StoneSage, scraped by Prometheus on LXC 129). They reset on a restart; Prometheus' rate() allows for that."""
+    StoneSage, scraped by Prometheus on the metrics host). They reset on a restart; Prometheus' rate() allows for that."""
 
     def __init__(self):
         self._lock = threading.Lock()

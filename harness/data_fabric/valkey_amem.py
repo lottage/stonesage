@@ -158,7 +158,7 @@ class ValkeyAMEM:
             ),
             (
                 "core_wildlife_sentry",
-                "FaunaSentinel 24/7 Wildlife Sentry Daemon on VM 102 monitors Tapo cameras (Back Yard, Driveway, Side Yard, Living Room) and logs deer, foxes, cats, and perimeter events.",
+                "FaunaSentinel 24/7 Wildlife Sentry Daemon on the engine host monitors Tapo cameras (Back Yard, Driveway, Side Yard, Living Room) and logs deer, foxes, cats, and perimeter events.",
                 ["wildlife", "camera", "cameras", "cam", "cams", "tapo", "sentry", "perimeter", "deer", "backyard", "driveway", "yard", "animal", "sightings"],
                 "security"
             ),
@@ -176,7 +176,7 @@ class ValkeyAMEM:
             ),
             (
                 "core_agents_work",
-                "Background engines: FaunaSentinel wildlife sentry on VM 102 (describes camera frames with Vision :8004), the PVE hardware watchdog on LXC 120, and model inference on Coordinator :8001, Worker :8002, Embedder :8003 and Vision :8004. The 24/7 autonomous thinking loop and the Assembly Hall are shelved and stopped since 2026-09-23.",
+                "Background engines: FaunaSentinel wildlife sentry on the engine host (describes camera frames with Vision :8004), the PVE hardware watchdog on the StoneSage host, and model inference on Coordinator :8001, Worker :8002, Embedder :8003 and Vision :8004. The 24/7 autonomous thinking loop and the Assembly Hall are shelved and stopped since 2026-09-23.",
                 ["agent", "agents", "working", "work", "stack", "task", "tasks", "doing", "active", "fleet", "status", "currently", "now"],
                 "operations"
             ),

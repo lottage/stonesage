@@ -27,6 +27,11 @@ class ObsidianIngestor:
         self.manifest_file = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "vault_sync_manifest.json")
         op = ((config.get("operator") or {}).get("name") or "").lower()
         self.operator_words = [op] if op else []         # a note naming the user is personal
+        # what else makes a note personal (config.json obsidian.personal_paths: words in a note's path;
+        # obsidian.personal_words: words in its text); without them only these generic ones apply
+        self.personal_paths = [str(w).lower() for w in obsidian_cfg.get("personal_paths") or
+                               ["personal", "home info", "accounting", "family", "journal"]]
+        self.personal_words = ["vin:", *self.operator_words, *[str(w).lower() for w in obsidian_cfg.get("personal_words") or []]]
         self.last_sync_status = {
             "last_synced": None,
             "total_notes": 0,
@@ -143,10 +148,10 @@ class ObsidianIngestor:
         lower_path = rel_path.lower()
         lower_content = content.lower()
 
-        # Personal profile, home info, vehicle, wedding, education
-        if any(k in lower_path for k in ["home info", "bmw", "accounting", "wedding", "gifts", "continuing education"]):
+        # Personal profile (see personal_paths / personal_words above)
+        if any(k in lower_path for k in self.personal_paths):
             return "companion_profile"
-        if any(k in lower_content for k in ["vin:", *self.operator_words, "f30", "328i", "wife", "marriage", "degree", "wgu"]):
+        if any(k in lower_content for k in self.personal_words):
             return "companion_profile"
 
         # Tasks, jots, todos

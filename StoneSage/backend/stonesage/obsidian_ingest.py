@@ -2,10 +2,10 @@
 """
 StoneSage Obsidian Multimodal Ingestion Engine
 Captures URLs, files, code snippets, and photos directly into:
-1. CouchDB dedicated database ('ai_obsidian' on LXC 116 :5984)
+1. CouchDB dedicated database ('ai_obsidian' on the CouchDB host :5984)
 2. Local Markdown vault mirrors on disk
-3. Qdrant hybrid vector memory ('obsidian_brain' on LXC 117 :6333)
-4. Valkey A-MEM working memory (< 35 token atomic cards on VM 102 :6379)
+3. Qdrant hybrid vector memory ('obsidian_brain' on the Qdrant host :6333)
+4. Valkey A-MEM working memory (< 35 token atomic cards on the engine host :6379)
 """
 
 import os

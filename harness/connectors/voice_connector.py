@@ -1,5 +1,5 @@
 """
-Voice Services Connector (LXC 121).
+Voice Services Connector (the voice host).
 Bridges Faster Whisper STT (:8200) and Kokoro TTS (:8300) for ambient audio streaming.
 """
 
@@ -24,7 +24,7 @@ class VoiceConnector:
         self.kokoro_fallback_url = (kokoro_fallback_url or "").rstrip("/")
 
     def synthesize_speech(self, text: str, voice: str = "am_adam", speed: float = 1.0) -> Optional[bytes]:
-        """Generates audio WAV stream from Kokoro: the voice server first, the old voice LXC if it does not answer."""
+        """Generates audio WAV stream from Kokoro: the voice server first, the legacy voice host if it does not answer."""
         payload = {
             "model": "kokoro",
             "input": text[:800],
@@ -42,7 +42,7 @@ class VoiceConnector:
                 headers={"Content-Type": "application/json", "User-Agent": "Harness-Voice"},
                 method="POST"
             )
-            # Kokoro on the old CPU LXC needs ~40 ms per character (330 chars: 12-13 s): a flat 10 s failed long replies
+            # Kokoro on the legacy CPU voice host needs ~40 ms per character (330 chars: 12-13 s): a flat 10 s failed long replies
             try:
                 with urllib.request.urlopen(req, timeout=max(10.0, 0.08 * len(payload["input"]))) as resp:
                     return resp.read()

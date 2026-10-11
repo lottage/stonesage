@@ -1,4 +1,4 @@
-"""Offline test for the health probe list: the voice server on VM 102 is probed next to the old voice LXC (its fallback)."""
+"""Offline test for the health probe list: the voice server on the engine host is probed next to the legacy voice host (its fallback)."""
 
 import os
 import sys
@@ -23,12 +23,12 @@ def probes(cfg=None):
 class TestVoiceProbes(unittest.TestCase):
     def test_the_voice_server_and_its_wyoming_ports_are_probed(self):
         p = probes()                                   # nothing configured: one box, everything on localhost
-        self.assertEqual(p["Voice server (VM 102)"][3], "http://127.0.0.1:8210/health")
-        self.assertEqual(p["Wyoming STT (VM 102)"][3:], ("127.0.0.1", 10301))
-        self.assertEqual(p["Wyoming TTS (VM 102)"][3:], ("127.0.0.1", 10201))
+        self.assertEqual(p["Voice server"][3], "http://127.0.0.1:8210/health")
+        self.assertEqual(p["Wyoming STT"][3:], ("127.0.0.1", 10301))
+        self.assertEqual(p["Wyoming TTS"][3:], ("127.0.0.1", 10201))
 
     def test_the_wake_word_service_is_probed(self):
-        self.assertEqual(probes()["Wake word (VM 102)"][3:], ("127.0.0.1", 10400))
+        self.assertEqual(probes()["Wake word"][3:], ("127.0.0.1", 10400))
 
     def test_the_old_voice_lxc_is_probed_only_when_configured(self):
         old = ("Whisper STT", "Kokoro TTS", "Wyoming Whisper", "Wyoming Piper")
@@ -45,9 +45,9 @@ class TestVoiceProbes(unittest.TestCase):
 
     def test_the_configured_voice_server_url_is_followed(self):
         p = probes({"voice": {"stt_url": "http://10.9.8.7:9000/"}})
-        self.assertEqual(p["Voice server (VM 102)"][3], "http://10.9.8.7:9000/health")
-        self.assertEqual(p["Wyoming STT (VM 102)"][3], "10.9.8.7")
-        self.assertEqual(p["Wake word (VM 102)"][3], "10.9.8.7")
+        self.assertEqual(p["Voice server"][3], "http://10.9.8.7:9000/health")
+        self.assertEqual(p["Wyoming STT"][3], "10.9.8.7")
+        self.assertEqual(p["Wake word"][3], "10.9.8.7")
 
 
 if __name__ == "__main__":

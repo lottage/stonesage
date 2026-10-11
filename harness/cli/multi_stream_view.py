@@ -1,7 +1,7 @@
 """
 Multi-Stream Concurrent Reasoning Orchestrator & TUI.
 Provides full interactive user control over prompts, agent selection,
-compute nodes, and models across the Aevum cluster.
+compute nodes, and models across the cluster.
 Renders real-time side-by-side streams with live <think> traces and speeds.
 """
 

@@ -1,5 +1,5 @@
 """
-Trainer Hub: Bridges the Harness to VM 102 pipeline-gguf-trainer and local QLoRA.
+Trainer Hub: Bridges the Harness to the engine host pipeline-gguf-trainer and local QLoRA.
 Enforces the 70/30 Ground Truth dataset invariant, monitors training runs,
 and drives golden invariant validation before model deployment.
 """

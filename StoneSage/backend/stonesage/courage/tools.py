@@ -333,7 +333,7 @@ class CourageTools:
 
     # ---- handlers ------------------------------------------------------------
     def _camera_key(self, label: Optional[str]) -> str:
-        """Sentry location label ('Kitchen/Living', 'Driveway/Front Door') -> camera key; the household's default camera."""
+        """Sentry location label ('Living', 'Driveway') -> camera key; the household's default camera."""
         return self.deps.household.camera_key(label)
 
     def _default_phone(self) -> str:

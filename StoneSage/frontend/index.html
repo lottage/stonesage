@@ -1144,9 +1144,9 @@
                     </div>
                   </div>
                   <select id="harness-node-select" class="form-select" onchange="onHarnessNodeSelected(this.value)">
-                    <option value="node1_primary" selected>VM 102 Primary (GPU 0 - Port 8001)</option>
-                    <option value="node1_secondary">VM 102 Secondary (GPU 1 - Port 8002)</option>
-                    <option value="vm102_dual">VM 102 Dual-GPU Array (Ports 8001 + 8002)</option>
+                    <option value="node1_primary" selected>Primary (GPU 0 - Port 8001)</option>
+                    <option value="node1_secondary">Secondary (GPU 1 - Port 8002)</option>
+                    <option value="dual_gpu">Dual-GPU Array (Ports 8001 + 8002)</option>
                     <option value="local_workstation">Host Workstation (:8088)</option>
                   </select>
                   <div id="harness-node-meta" style="font-size:0.73rem; color:var(--term-text-muted); margin-top:2px;">
@@ -1602,7 +1602,7 @@
                ================================================================= -->
           <div class="engine-layer-content engine-layer" id="engine-layer-trainer" style="display:none;">
             <div class="harness-card-title" style="margin-bottom:10px;">
-              <span>🎯 VM 102 GGUF QLoRA TRAINING PIPELINE &amp; 24/7 AUTONOMOUS LOOP</span>
+              <span>🎯 GGUF QLoRA TRAINING PIPELINE &amp; 24/7 AUTONOMOUS LOOP</span>
               <span style="font-size:0.75rem; color:var(--term-text-muted);">[70% GROUND TRUTH / 30% AUDITED RUMINATIONS]</span>
             </div>
             <div class="harness-card">
@@ -1696,6 +1696,9 @@
             </div>
           </div>
 
+          <!-- Hearth setup wizard: banner while incomplete, panel on demand (js/hearth_setup.js, backend/hearth/setup_wizard.py) -->
+          <div id="hearth-setup-root" style="margin-bottom:8px;"></div>
+
           <!-- Courage Computer Real Presence & Voice Bar -->
           <div class="harness-card" style="margin-bottom:12px; border:1px solid var(--term-accent-gold); background:rgba(217,119,6,0.04);">
             <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; border-bottom:1px solid var(--term-border-dim); padding-bottom:6px; margin-bottom:8px;">
@@ -1768,7 +1771,7 @@
             <div class="harness-card" style="margin-bottom:0;">
               <div style="font-weight:bold; color:var(--term-text-bright); display:flex; justify-content:space-between; align-items:center;">
                 <span>🌡️ GOOGLE NEST THERMOSTAT</span>
-                <span id="thermostat-entity-id" style="font-size:0.72rem; color:var(--term-text-muted); font-family:monospace;">climate.nest_thermostat</span>
+                <span id="thermostat-entity-id" style="font-size:0.72rem; color:var(--term-text-muted); font-family:monospace;">climate.thermostat</span>
               </div>
 
               <div class="ascii-thermostat-dial" style="font-family:monospace; background:var(--term-bg); padding:10px; border-radius:4px; margin:8px 0; font-size:0.82rem; line-height:1.4; border:1px solid var(--term-border-dim);">
@@ -1992,7 +1995,7 @@
 
         <div style="margin-top:12px; padding-top:10px; border-top:1px solid var(--term-border-dim);">
           <div style="font-size:0.74rem; color:var(--term-accent-gold); font-weight:bold; margin-bottom:6px; display:flex; justify-content:space-between; align-items:center;">
-            <span>⚡ HARDWARE STACK PROFILES (VM 102 DUAL-GPU):</span>
+            <span>⚡ HARDWARE STACK PROFILES (DUAL-GPU):</span>
             <span id="stack-switch-status" style="font-size:0.7rem; color:var(--term-accent-blue);"></span>
           </div>
           <div id="cluster-modes-list" style="display:flex; flex-direction:column; gap:6px;">

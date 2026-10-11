@@ -39,6 +39,17 @@ const MODE_MAP = {
   log: 'ace/mode/text'
 };
 
+/**
+ * An Ace session with the syntax-check worker off. The page ships the editor's core, modes and themes but not its
+ * worker-*.js files, so the worker would 404 on every file opened; highlighting does not need it.
+ */
+function newSession(text, mode) {
+  const session = new ace.EditSession(text);
+  session.setUseWorker(false);
+  session.setMode(mode);
+  return session;
+}
+
 export function initWorkstationAce() {
   const container = document.getElementById('ace-editor');
   if (!container || !window.ace) {
@@ -57,6 +68,7 @@ export function initWorkstationAce() {
 
   // Initialize Ace Editor
   aceEditor = ace.edit('ace-editor');
+  aceEditor.session.setUseWorker(false);       // no worker-*.js is shipped (see newSession)
   aceEditor.setTheme('ace/theme/tomorrow_night');
   aceEditor.setFontSize(13);
   aceEditor.setShowPrintMargin(false);
@@ -67,7 +79,7 @@ export function initWorkstationAce() {
   aceEditor.session.setUseWrapMode(false);
 
   // Set initial blank session
-  const defaultSession = new ace.EditSession('// Welcome to StoneSage Workstation IDE\n// Select a file from the Project Files tree on the left to start editing.\n', 'ace/mode/javascript');
+  const defaultSession = newSession('// Welcome to StoneSage Workstation IDE\n// Select a file from the Project Files tree on the left to start editing.\n', 'ace/mode/javascript');
   aceEditor.setSession(defaultSession);
 
   // Custom keybindings
@@ -216,7 +228,7 @@ export async function openFileInAce(filePath) {
       const ext = filePath.split('.').pop().toLowerCase();
       const mode = MODE_MAP[ext] || 'ace/mode/text';
 
-      const session = new ace.EditSession(content, mode);
+      const session = newSession(content, mode);
       session.setTabSize(4);
       session.setUseSoftTabs(true);
       session.setUseWrapMode(false);
@@ -313,7 +325,7 @@ export function closeTab(filePath, event) {
     } else {
       activeTabPath = null;
       State.activeFile = null;
-      const blankSession = new ace.EditSession('', 'ace/mode/text');
+      const blankSession = newSession('', 'ace/mode/text');
       aceEditor.setSession(blankSession);
       const titleEl = document.getElementById('workstation-active-file-title');
       if (titleEl) titleEl.textContent = '(Click any file in tree to open)';
@@ -475,6 +487,7 @@ function updateStatusBarState() {
 
 export function setLanguageMode(mode) {
   if (!aceEditor) return;
+  aceEditor.session.setUseWorker(false);
   aceEditor.session.setMode(`ace/mode/${mode}`);
 }
 

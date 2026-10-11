@@ -9,7 +9,7 @@ from harness.core.context_fabric import context_fabric
 from harness.data_fabric.valkey_amem import valkey_amem
 from harness.config import fleet_config
 
-PVE_IP = "192.0.2.222"  # Node 1 'pve' (Proxmox /cluster/status, 2026-09-23)
+PVE_IP = "192.0.2.222"  # node 1 of the Proxmox cluster (/cluster/status)
 STALE_PVE_IP = "192.0.2.229"
 
 class TestContextFabric(unittest.TestCase):

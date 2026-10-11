@@ -134,7 +134,7 @@ class RoamingHandoverProtocol:
         logger.info(f"⚡ [Handover] Reconciling handover '{meta.get('handover_id')}' from '{meta.get('node_id')}'.")
         
         has_patch = os.path.exists(patch_file)
-        # Reconcile code changes, run regression test on VM 102, index into Qdrant
+        # Reconcile code changes, run regression test on the engine host, index into Qdrant
         return {
             "ok": True,
             "handover_id": meta.get("handover_id"),

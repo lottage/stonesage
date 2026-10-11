@@ -118,17 +118,17 @@ def build_probes(cfg: Dict[str, Any]) -> List:
     voice_server_host = endpoints.host("voice", cfg)
 
     probes = [
-        (probe_llama, "Coordinator (Courage)", endpoints.url("coordinator", cfg)),
+        (probe_llama, "Coordinator", endpoints.url("coordinator", cfg)),
         (probe_llama, "Worker", endpoints.url("worker", cfg)),
         (probe_llama, "Embedder", endpoints.url("embedder", cfg)),
         (probe_llama, "Vision", endpoints.url("vision", cfg)),
         (probe_http, "Cluster MCP bridge", "services", f"{mcp_url}/health"),
         (probe_http, "Qdrant", "services", f"{qdrant_url}/readyz"),
         (probe_http, "CouchDB", "services", f"{couch_url}/_up", {"Authorization": f"Basic {couch_auth}"}),
-        (probe_http, "Voice server (VM 102)", "voice", f"{voice_server_url}/health"),
-        (probe_tcp, "Wyoming STT (VM 102)", "voice", voice_server_host, 10301),
-        (probe_tcp, "Wyoming TTS (VM 102)", "voice", voice_server_host, 10201),
-        (probe_tcp, "Wake word (VM 102)", "voice", voice_server_host, 10400),
+        (probe_http, "Voice server", "voice", f"{voice_server_url}/health"),
+        (probe_tcp, "Wyoming STT", "voice", voice_server_host, 10301),
+        (probe_tcp, "Wyoming TTS", "voice", voice_server_host, 10201),
+        (probe_tcp, "Wake word", "voice", voice_server_host, 10400),
     ]
     if pve_host:
         probes.insert(7, (probe_tcp, "Proxmox API", "infra", pve_host, endpoints.port("proxmox", cfg)))

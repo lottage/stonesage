@@ -1,6 +1,6 @@
 """
 Courage's conversational memory (2026-09-26): short notes about the people he talks to, learned from conversation
-and recalled by meaning in later ones. Everything stays local: the notes live in data/courage_memories.json on LXC 120,
+and recalled by meaning in later ones. Everything stays local: the notes live in data/courage_memories.json on the StoneSage host,
 the coordinator (:8001) decides what is worth keeping, the BGE embedder (:8003) finds what is relevant.
 
 Write: after a conversational turn, a background call asks the coordinator for 0-2 lasting notes (most turns give

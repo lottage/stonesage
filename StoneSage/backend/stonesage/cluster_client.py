@@ -338,7 +338,7 @@ class ClusterClient:
                 headers = {"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"}
                 notice = f"\n> [!TIP]\n> **🌌 Antigravity Frontier Director (Tier-1 Cloud Hybrid)**: High-level reasoning active. Heavy code & validation delegated to local cluster to optimize tokens.\n\n"
             else:
-                notice = f"\n> [!TIP]\n> **🌌 Antigravity Frontier Director (Local Dual-GPU Stack)**: Running locally on VM 102 (:8001 Coordinator + :8002 Worker) with Tier-1 Meta-Verifier invariants (0 cloud tokens consumed).\n\n"
+                notice = f"\n> [!TIP]\n> **🌌 Antigravity Frontier Director (Local Dual-GPU Stack)**: Running locally on the engine host (:8001 Coordinator + :8002 Worker) with Tier-1 Meta-Verifier invariants (0 cloud tokens consumed).\n\n"
                 base_url = self.coordinator_url
                 model_name = "coordinator"
                 headers = {"Content-Type": "application/json"}

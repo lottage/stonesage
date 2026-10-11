@@ -1,7 +1,7 @@
 /**
  * ⚡ Boost: free extra inference (Engine Studio → Engine Console → ⚡ BOOST).
  * Per-surface switches, free sources with today's quota and tier, a test button per source, key entry
- * (write-only: keys are never sent back), and the frontier worker (Claude/Gemini CLI jobs on VM 102).
+ * (write-only: keys are never sent back), and the frontier worker (Claude/Gemini CLI jobs on the engine host).
  * Backend: /api/boost/* (backend/boost). When chat is switched on, the topbar model menu gains "boost" entries.
  */
 
@@ -73,7 +73,7 @@ function frontierBlock() {
     <ul style="margin:4px 0 8px 18px;padding:0">${line('claude')}${line('gemini')}</ul>
     <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:flex-start">
       <select id="bst-fr-engine" class="form-select" style="font-size:.75rem"><option value="claude">Claude (Pro)</option><option value="gemini">Gemini (AI Pro)</option></select>
-      <input id="bst-fr-repo" class="form-input" placeholder="git repo on VM 102 (optional)" style="width:220px;font-size:.75rem">
+      <input id="bst-fr-repo" class="form-input" placeholder="git repo on the engine host (optional)" style="width:220px;font-size:.75rem">
       <textarea id="bst-fr-task" class="form-input" rows="2" placeholder="Task (code or general only; home details are refused)" style="flex:1;min-width:220px;font-size:.75rem"></textarea>
       <button type="button" class="term-cmd-btn" id="bst-fr-send" ${f.enabled ? '' : 'disabled'} style="font-size:.72rem">[HAND OFF]</button>
     </div>
@@ -102,7 +102,7 @@ function render() {
     <div>${(st.providers || []).map(providerRow).join('')}</div>
     <div style="display:flex;gap:6px;margin:6px 0 12px"><button type="button" class="term-cmd-btn" id="bst-save-keys" style="font-size:.72rem">[SAVE KEYS]</button>
       <small style="opacity:.7">Keys are stored in config.json on StoneSage (or set them in /etc/stonesage/secrets.env) and never shown again.</small></div>
-    <div class="harness-card-title" style="margin-bottom:6px">🧠 FRONTIER WORKER — Claude Code / Gemini CLI on VM 102 (your subscriptions, scratch clones, diff back)</div>
+    <div class="harness-card-title" style="margin-bottom:6px">🧠 FRONTIER WORKER — Claude Code / Gemini CLI on the engine host (your subscriptions, scratch clones, diff back)</div>
     <div class="harness-card" style="padding:8px">${frontierBlock()}</div>`;
 }
 

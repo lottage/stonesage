@@ -176,7 +176,7 @@ function spawnInitialAgents() {
   coord.position.set(0, 0, 0);
   coord.userData.name = 'Coordinator-Alpha';
   coord.userData.role = 'Principal Systems Architect';
-  coord.userData.node = 'VM 102 Vulkan0 (:8001 Q8_0)';
+  coord.userData.node = 'Vulkan0 (:8001 Q8_0)';
   coord.userData.animState = 'idle';
   scene.add(coord);
   agents.set('coord-alpha', coord);
@@ -195,7 +195,7 @@ function spawnInitialAgents() {
   worker1.position.set(0, 0, 0);
   worker1.userData.name = 'Worker-Beta';
   worker1.userData.role = 'High-Speed Test & Utility Solver';
-  worker1.userData.node = 'VM 102 Vulkan1 (:8002 Q4_K_M)';
+  worker1.userData.node = 'Vulkan1 (:8002 Q4_K_M)';
   worker1.userData.animState = 'idle';
   scene.add(worker1);
   agents.set('worker-beta', worker1);
@@ -214,7 +214,7 @@ function spawnInitialAgents() {
   worker2.position.set(0, 0, 0);
   worker2.userData.name = 'Worker-Gamma';
   worker2.userData.role = 'Code Invariants & Lint Engine';
-  worker2.userData.node = 'VM 102 Vulkan1 (:8002 Q4_K_M)';
+  worker2.userData.node = 'Vulkan1 (:8002 Q4_K_M)';
   worker2.userData.animState = 'typing';
   scene.add(worker2);
   agents.set('worker-gamma', worker2);
@@ -476,7 +476,7 @@ function spawnBlendedChildAgent() {
   child.position.set(0, 0.5, 0);
   child.userData.name = 'Ornith-Claude-Hybrid';
   child.userData.role = 'Synthetic Dual-Lineage Solver';
-  child.userData.node = 'VM 102 + ROG Ally Swarm';
+  child.userData.node = 'Engine host + ROG Ally Swarm';
   child.userData.animState = 'celebrating';
   scene.add(child);
   agents.set(childId, child);
@@ -509,7 +509,7 @@ function spawnNewAgentDialog() {
   newAgent.position.set(-4 + Math.random() * 8, 0, -4 + Math.random() * 8);
   newAgent.userData.name = name;
   newAgent.userData.role = role || 'Cluster Utility Worker';
-  newAgent.userData.node = 'VM 102 Vulkan1 (:8002)';
+  newAgent.userData.node = 'Vulkan1 (:8002)';
   newAgent.userData.animState = 'celebrating';
   scene.add(newAgent);
   agents.set(agentId, newAgent);

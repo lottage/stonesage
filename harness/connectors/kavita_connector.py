@@ -1,5 +1,5 @@
 """
-Kavita Connector (LXC 100 :5000).
+Kavita Connector (port 5000).
 Enables querying technical books, programming documentation, and PDFs.
 """
 

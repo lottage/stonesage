@@ -12,11 +12,14 @@ parked in PendingActions for that session, and Courage asks. A later "yes" in th
 
 import json
 import re
+import socket
 import threading
 import time
 import urllib.request
 import uuid
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
+
+from lodestone import endpoints
 
 from .escalation import failed
 from .prompt import build_presence_card, build_static_prompt, build_system_prompt
@@ -166,6 +169,20 @@ class PendingActions:
         return a
 
 
+def llm_timeout_s(cfg: Optional[Dict[str, Any]] = None, profile: Optional[Dict[str, Any]] = None) -> float:
+    """Seconds one call to the coordinator may stay silent. config courage.llm_timeout_s wins; otherwise 600 s when the
+    coordinator runs on a CPU (cluster.coordinator_cpu, COORDINATOR_CPU, or the live system profile: a few tokens a
+    second, and minutes to read a long prompt) and 90 s when it runs on a GPU."""
+    cfg = cfg if cfg is not None else {}
+    try:
+        configured = float((cfg.get("courage") or {}).get("llm_timeout_s") or 0)
+    except (TypeError, ValueError):
+        configured = 0.0
+    if configured > 0:
+        return configured
+    return endpoints.CPU_LLM_TIMEOUT_S if endpoints.coordinator_on_cpu(cfg, profile) else endpoints.GPU_LLM_TIMEOUT_S
+
+
 def _http_post_json(url: str, body: Dict[str, Any], timeout: float) -> Dict[str, Any]:
     req = urllib.request.Request(url, json.dumps(body).encode("utf-8"), {"Content-Type": "application/json"})
     with urllib.request.urlopen(req, timeout=timeout) as r:
@@ -173,7 +190,10 @@ def _http_post_json(url: str, body: Dict[str, Any], timeout: float) -> Dict[str,
 
 
 def _http_stream_json(url: str, body: Dict[str, Any], timeout: float) -> Iterator[Dict[str, Any]]:
-    """The same call with stream=true: one parsed chunk per SSE line (llama.cpp puts `timings` on the last one)."""
+    """The same call with stream=true: one parsed chunk per SSE line (llama.cpp puts `timings` on the last one).
+    `timeout` is an IDLE limit, not a total deadline: urllib applies it to the connection and to every wait for the next
+    bytes, so a slow reply that keeps producing tokens is never cut, and a model that goes silent for `timeout` seconds
+    (including the wait for the first token while it reads the prompt) is."""
     req = urllib.request.Request(url, json.dumps(dict(body, stream=True)).encode("utf-8"),
                                  {"Content-Type": "application/json"})
     with urllib.request.urlopen(req, timeout=timeout) as r:
@@ -556,7 +576,8 @@ class CourageAgent:
                     tr.end("on_loan", text)
                     yield {"type": "final", "content": text}
                     return
-                text = f"My brain on :8001 isn't answering ({type(e).__name__}). Try again in a moment."
+                waited = f" after {self.timeout:.0f} s" if isinstance(e, (socket.timeout, TimeoutError)) or                     isinstance(getattr(e, "reason", None), (socket.timeout, TimeoutError)) else ""
+                text = f"My brain on :8001 isn't answering ({type(e).__name__}{waited}). Try again in a moment."
                 tr.end("llm_error", text)
                 yield {"type": "final", "content": text}
                 return

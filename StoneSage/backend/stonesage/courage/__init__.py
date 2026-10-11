@@ -9,7 +9,7 @@ Dependencies (Home Assistant, cameras, presence, memory, voice) are injected thr
 `CourageDeps`, so the loop runs offline in tests with fakes.
 """
 
-from .agent import CourageAgent, PendingActions
+from .agent import CourageAgent, PendingActions, llm_timeout_s
 from .tools import CourageDeps, CourageTools
 
-__all__ = ["CourageAgent", "CourageDeps", "CourageTools", "PendingActions"]
+__all__ = ["CourageAgent", "CourageDeps", "CourageTools", "PendingActions", "llm_timeout_s"]

@@ -2,7 +2,7 @@
 """
 Homelab Training Dataset Compiler & Highest-Tier Model Curator
 Compiles raw knowledge, memories, code invariants, and autonomous exploration
-dossiers from Qdrant, CouchDB, and VM 102 thinking archives into a gold-standard,
+dossiers from Qdrant, CouchDB, and the engine host thinking archives into a gold-standard,
 hallucination-free fine-tuning dataset (ShareGPT and Alpaca JSONL formats).
 
 100% Python Standard Library - Zero external dependencies.

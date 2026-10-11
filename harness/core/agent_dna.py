@@ -56,7 +56,7 @@ class AgentDNAManager:
                         "Deliver complete executable solutions with zero hand-waving"
                     ],
                     "core_prompt": (
-                        "You are coder-agent, Lead Systems Architect and Software Engineer for this homelab cluster. "
+                        "You are coder-agent, Lead Systems Architect and Software Engineer for this cluster. "
                         "The operator is the user; you are the assistant.\n\n"
                         "CORE OBJECTIVES:\nDesign resilient software architectures, preserve mathematical invariants, "
                         "optimize code performance, and write clean, bug-free code."
@@ -128,7 +128,7 @@ class AgentDNAManager:
                 },
                 "amem_facts": [
                     "Camera stack covers Back Yard, Driveway, Side Yard, and Living Room via Tapo streams.",
-                    "Vision server is GPU-accelerated on VM 102 port :8004 with 640px Lanczos pre-resizing.",
+                    "Vision server is GPU-accelerated on the engine host port :8004 with 640px Lanczos pre-resizing.",
                     "Wildlife sightings are indexed in Qdrant and archived in WILDLIFE_ACTIVITY_LOG.md."
                 ],
                 "autonomy_goals": [
@@ -195,7 +195,7 @@ class AgentDNAManager:
                 "amem_facts": [
                 ],
                 "autonomy_goals": [
-                    "Monitor hardware watchdog on LXC 120 and GPU memory health.",
+                    "Monitor hardware watchdog on the StoneSage host and GPU memory health.",
                     "Verify Vulkan device bindings and prevent swap thrashing."
                 ]
             }

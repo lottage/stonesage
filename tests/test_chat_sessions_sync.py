@@ -28,7 +28,7 @@ class TestChatSessionsSync(unittest.TestCase):
             session_id=session_id,
             title="Refactor Vulkan Kernel",
             workspace_path="/opt/cluster-bridge/vulkan",
-            node_id="vm102",
+            node_id="engine_host",
             permissions={"autonomy_level": "autonomous", "can_write": True}
         )
         self.assertEqual(created["session_id"], session_id)
