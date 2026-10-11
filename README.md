@@ -29,7 +29,15 @@ apps run is a list in `config.json` (`"apps"`), so the same platform runs with H
 - `harness/`: the command-line harness and its core libraries (multi-node scheduling, memory fabric, connectors).
 - `tests/`: unit tests, route goldens and headless JavaScript tests.
 
-## Install
+## Install with Docker
+
+`docker build -t ghcr.io/lottage/stonesage:latest .` builds the platform and cockpit image (non-root, state in the
+`/config` and `/data` volumes; Lodestone is installed from GitHub, `--build-arg LODESTONE_PIP=...` points elsewhere). The
+easiest whole stack is the Compose file that Lodestone's installer writes (`python -m lodestone.installer --docker`):
+models, a gateway, and StoneSage with the [Hearth](https://github.com/lottage/hearth) app. Docker runs the CPU profile on
+Linux, Windows and macOS; NVIDIA GPUs on Linux and Windows (WSL2); AMD and Intel GPUs on Linux only.
+
+## Install without Docker
 
 StoneSage depends on [Lodestone](https://github.com/lottage/lodestone) (not on PyPI); pip fetches it from GitHub as part
 of the install:
