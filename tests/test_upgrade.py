@@ -337,7 +337,7 @@ class TestFirstRunAndExample(unittest.TestCase):
 class TestVersions(unittest.TestCase):
     def test_each_layer_has_a_version_and_an_api_version(self):
         for pkg in (lodestone, stonesage) + ((hearth,) if hearth else ()):
-            self.assertRegex(pkg.__version__, r"^\d+\.\d+\.\d+$", pkg.__name__)
+            self.assertRegex(pkg.__version__, r"^\d+\.\d+\.\d+(?:(?:a|b|rc)\d+)?$", pkg.__name__)   # PEP 440: a stamped tree says 0.1.0rc4
         for v in (lodestone.API_VERSION, stonesage.API_VERSION):
             self.assertRegex(v, r"^\d+\.\d+$")
 

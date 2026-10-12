@@ -31,8 +31,8 @@ apps run is a list in `config.json` (`"apps"`), so the same platform runs with H
 
 ## Install with Docker
 
-`docker build -t ghcr.io/lottage/stonesage:0.1.0-rc.3 .` builds the platform and cockpit image (non-root, state in the
-`/config` and `/data` volumes; Lodestone is installed from GitHub at the same release, v0.1.0-rc.3; `--build-arg
+`docker build -t ghcr.io/lottage/stonesage:0.1.0-rc.4 .` builds the platform and cockpit image (non-root, state in the
+`/config` and `/data` volumes; Lodestone is installed from GitHub at the same release, v0.1.0-rc.4; `--build-arg
 LODESTONE_PIP=...` points elsewhere). The easiest whole stack is the Compose file that Lodestone's installer writes
 (`python -m lodestone.installer --docker`, then `docker compose up -d --build`; the steps and prerequisites are in the
 [Hearth README](https://github.com/lottage/hearth)): models, a gateway, and StoneSage with the Hearth app. Docker runs the
@@ -60,7 +60,7 @@ StoneSage depends on [Lodestone](https://github.com/lottage/lodestone) (not on P
 same release, as part of the install:
 
 ```
-git clone --branch v0.1.0-rc.3 https://github.com/lottage/stonesage
+git clone --branch v0.1.0-rc.4 https://github.com/lottage/stonesage
 cd stonesage
 pip install -e .
 ```
