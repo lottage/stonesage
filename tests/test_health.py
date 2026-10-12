@@ -42,8 +42,16 @@ class TestHealth(unittest.TestCase):
         self.assertFalse(r["ok"])
         self.assertEqual(r["status"], "http 401")
 
+    # A homelab: every service named in config.json, so every probe runs.
+    FULL = {"homeassistant": {"token": "x", "url": "http://10.0.0.9:8123"},
+            "cluster": {"coordinator_url": "http://10.0.0.5:8001/v1", "worker_url": "http://10.0.0.5:8002/v1",
+                        "embedder_url": "http://10.0.0.5:8003/v1", "vision_url": "http://10.0.0.5:8004/v1",
+                        "mcp_url": "http://10.0.0.5:8765", "qdrant_url": "http://10.0.0.6:6333"},
+            "couchdb": {"url": "http://10.0.0.7:5984", "username": "u", "password": "p"},
+            "voice": {"stt_url": "http://10.0.0.5:8210"}}
+
     def test_check_all_summary_and_cache(self):
-        cfg = {"homeassistant": {"token": "x"}}
+        cfg = self.FULL
         calls = []
 
         def fake_http(url, headers=None, timeout=0):
@@ -52,16 +60,46 @@ class TestHealth(unittest.TestCase):
                 return None, "down", 1
             return (200, PROPS, 1) if url.endswith("/props") else (200, {}, 1)
 
-        with mock.patch.object(health, "_http", side_effect=fake_http), \
-                mock.patch.object(health, "_tcp", return_value=(True, 1)):
+        with mock.patch.object(health, "_http", side_effect=fake_http),                 mock.patch.object(health, "_tcp", return_value=(True, 1)):
             r = health.check_all(cfg, use_cache=False)
             n = len(calls)
             again = health.check_all(cfg, use_cache=True)
         self.assertFalse(r["ok"])
         total = len(health.build_probes(cfg))                      # not a literal: every new service used to break this test
+        self.assertGreaterEqual(total, 12)
         self.assertEqual(r["summary"], f"{total - 1}/{total} up; down: Vision")
+        self.assertEqual(r["not_set_up"], [])
         self.assertIs(again, r)
         self.assertEqual(len(calls), n, "cached call must not probe again")
+
+    def test_a_fresh_install_probes_only_what_it_has_and_lists_the_rest_as_not_set_up(self):
+        """M6 dry run #9: a Docker install showed 2/12 UP in red because ten services nobody set up were probed."""
+        cfg = {"cluster": {"coordinator_url": "http://127.0.0.1:8001/v1", "embedder_url": "http://embed:8003/v1"}}
+        with mock.patch.dict(os.environ, {k: v for k, v in os.environ.items() if not k.endswith(("_URL", "_HOST", "_TOKEN", "_PASSWORD"))},
+                             clear=True),                 mock.patch.object(health, "_http", return_value=(200, PROPS, 1)):
+            r = health.check_all(cfg, use_cache=False)
+        self.assertEqual([s["name"] for s in r["services"]], ["Coordinator", "Embedder"])
+        self.assertTrue(r["ok"], "services nobody set up must not turn the badge red")
+        idle = {i["name"] for i in r["not_set_up"]}
+        self.assertTrue({"Worker", "Vision", "Cluster MCP bridge", "Qdrant", "CouchDB", "Voice server", "Wake word",
+                         "Home Assistant"} <= idle, idle)
+        self.assertNotIn("Coordinator", idle)
+        self.assertTrue(r["summary"].startswith("2/2 up; not set up: Worker"))
+
+    def test_the_coordinator_is_core_and_probed_even_when_nothing_is_set(self):
+        with mock.patch.dict(os.environ, {k: v for k, v in os.environ.items() if not k.endswith("_URL")}, clear=True),                 mock.patch.object(health, "_http", return_value=(None, "refused", 1)):
+            r = health.check_all({}, use_cache=False)
+        self.assertEqual([s["name"] for s in r["services"]], ["Coordinator"])
+        self.assertFalse(r["ok"])
+        self.assertEqual(r["summary"].split(";")[0], "0/1 up")
+
+    def test_home_assistant_is_probed_once_it_has_a_token(self):
+        with mock.patch.dict(os.environ, {k: v for k, v in os.environ.items() if k != "HASS_TOKEN"}, clear=True):
+            names = [p[1] for p in health.build_probes({"apps": ["hearth"]})]
+            self.assertNotIn("Home Assistant", names)
+            self.assertIn("Home Assistant", [i["name"] for i in health.not_set_up({"apps": ["hearth"]})])
+            self.assertIn("Home Assistant", [p[1] for p in health.build_probes({"homeassistant": {"token": "t"}})])
+            self.assertNotIn("Home Assistant", [i["name"] for i in health.not_set_up({"apps": []})])   # no Home app: not listed at all
 
 
 if __name__ == "__main__":

@@ -1,5 +1,5 @@
 /**
- * StoneSage Sovereign Agent DNA Studio Controller (v4.0 Enterprise).
+ * StoneSage Sovereign Agent DNA Studio Controller.
  * Manages model-agnostic .agent.dna bundles, Soul/System Prompt editing, and A-MEM atomic fact cards.
  */
 

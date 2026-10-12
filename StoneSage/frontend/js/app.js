@@ -9,6 +9,7 @@ import { initTerminal } from './terminal.js';
 import { initHarness } from './harness.js';
 import { initFleet } from './fleet.js';
 import { fetchPresenceState, fetchIrrigationState } from './presence_garden.js';
+import { loadFeatures } from './features.js';
 import { fetchAgentDnaList } from './agent_dna.js';
 import { initWorkstationAce } from './workstation_ace.js';
 import { initEngineStudio } from './engine_studio.js';
@@ -68,7 +69,7 @@ window.closeQuickCaptureModal = function() {
 };
 
 function bootstrapApp() {
-  console.log('⚡ Initializing StoneSage Terminal Harness v3.0...');
+  console.log('⚡ Initializing StoneSage...');
 
   // 1. Initialize Accessible Theme (Deuteranopia Standard)
   try {
@@ -145,6 +146,13 @@ function bootstrapApp() {
     }
   } catch (err) {
     console.error('Failed drawer autonomy select listener:', err);
+  }
+
+  // 1a. What this install has: tabs, buttons and panels it lacks stay hidden (js/features.js)
+  try {
+    loadFeatures();
+  } catch (err) {
+    console.error('Failed loadFeatures:', err);
   }
 
   // 1b. Live hardware/model profile (fills every data-profile label)
@@ -306,7 +314,7 @@ window.triggerGlobalNudge = function() {
  */
 function registerServiceWorker() {
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('/sw.js?v=4.0.3')
+    navigator.serviceWorker.register('/sw.js?v=4.3.3')
       .then(reg => {
         console.log('PWA Service Worker registered:', reg.scope);
         reg.update().catch(() => {});

@@ -308,7 +308,7 @@ export async function dispatchAgent3DJob() {
                 quality: quality,
                 model_name: modelName,
                 title: prompt.slice(0, 32),
-                agent_creator: "Antigravity / Sovereign Agent"
+                agent_creator: "Sovereign Agent"
             })
         });
         const res = await resp.json();

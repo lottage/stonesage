@@ -109,7 +109,7 @@ function watchEngineChanges() {
 
 export function initProfile() {
   loadProfile();
-  setInterval(() => loadProfile(), REFRESH_MS);
+  setInterval(() => { if (!document.hidden) loadProfile(); }, REFRESH_MS);
   watchEngineChanges();
 }
 

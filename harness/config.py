@@ -117,6 +117,8 @@ class FleetConfig:
         # Storage & Cluster Services
         self.valkey_host = os.environ.get("VALKEY_HOST") or ep.host("valkey", cfg)
         self.valkey_port = int(os.environ.get("VALKEY_PORT") or ep.port("valkey", cfg))
+        # False on a fresh install that never named Valkey: A-MEM then keeps its in-memory store and does not connect
+        self.valkey_configured = bool(os.environ.get("VALKEY_HOST") or ep.configured("valkey", cfg))
         self.qdrant_url = svc("qdrant", "QDRANT_URL")
         self.couchdb_url = svc("couchdb", "COUCHDB_URL")
         self.postgres_url = os.environ.get("POSTGRES_URL", "")

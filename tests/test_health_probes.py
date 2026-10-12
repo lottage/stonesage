@@ -20,15 +20,23 @@ def probes(cfg=None):
         return {p[1]: p for p in health.build_probes(cfg or {})}
 
 
+VOICE = {"voice": {"stt_url": "http://10.0.0.5:8210"}}
+
+
 class TestVoiceProbes(unittest.TestCase):
-    def test_the_voice_server_and_its_wyoming_ports_are_probed(self):
-        p = probes()                                   # nothing configured: one box, everything on localhost
-        self.assertEqual(p["Voice server"][3], "http://127.0.0.1:8210/health")
-        self.assertEqual(p["Wyoming STT"][3:], ("127.0.0.1", 10301))
-        self.assertEqual(p["Wyoming TTS"][3:], ("127.0.0.1", 10201))
+    def test_the_voice_server_and_its_wyoming_ports_are_probed_once_configured(self):
+        p = probes(VOICE)
+        self.assertEqual(p["Voice server"][3], "http://10.0.0.5:8210/health")
+        self.assertEqual(p["Wyoming STT"][3:], ("10.0.0.5", 10301))
+        self.assertEqual(p["Wyoming TTS"][3:], ("10.0.0.5", 10201))
+
+    def test_nothing_voice_is_probed_on_an_install_without_a_voice_server(self):
+        p = probes()                                   # nothing configured: not "down", not probed (M6 dry run #9)
+        for name in ("Voice server", "Wyoming STT", "Wyoming TTS", "Wake word"):
+            self.assertNotIn(name, p)
 
     def test_the_wake_word_service_is_probed(self):
-        self.assertEqual(probes()["Wake word"][3:], ("127.0.0.1", 10400))
+        self.assertEqual(probes(VOICE)["Wake word"][3:], ("10.0.0.5", 10400))
 
     def test_the_old_voice_lxc_is_probed_only_when_configured(self):
         old = ("Whisper STT", "Kokoro TTS", "Wyoming Whisper", "Wyoming Piper")
@@ -48,6 +56,12 @@ class TestVoiceProbes(unittest.TestCase):
         self.assertEqual(p["Voice server"][3], "http://10.9.8.7:9000/health")
         self.assertEqual(p["Wyoming STT"][3], "10.9.8.7")
         self.assertEqual(p["Wake word"][3], "10.9.8.7")
+
+    def test_optional_engines_and_services_are_probed_only_when_named(self):
+        self.assertEqual(set(probes()), {"Coordinator"})
+        named = probes({"cluster": {"worker_url": "http://10.0.0.5:8002/v1", "qdrant_url": "http://10.0.0.6:6333"},
+                        "couchdb": {"username": "u"}})
+        self.assertEqual(set(named), {"Coordinator", "Worker", "Qdrant", "CouchDB"})
 
 
 if __name__ == "__main__":

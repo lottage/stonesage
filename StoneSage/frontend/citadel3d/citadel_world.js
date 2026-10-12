@@ -159,7 +159,7 @@ function updateTickerMetrics() {
   const statsEl = document.getElementById('ticker-stats');
   if (statsEl) {
     const offloadPct = Math.round((tokenMetrics.clusterTokens / (tokenMetrics.cloudTokens + tokenMetrics.clusterTokens)) * 100);
-    statsEl.innerHTML = `Cloud: ${Math.round(tokenMetrics.cloudTokens / 100) / 10}k tok | Cluster: ${Math.round(tokenMetrics.clusterTokens / 100) / 10}k tok (${offloadPct}% local) | Saved: $${tokenMetrics.savedDollars.toFixed(2)}`;
+    statsEl.innerHTML = `Simulated demo (not live data) · cloud ${Math.round(tokenMetrics.cloudTokens / 100) / 10}k tok | cluster ${Math.round(tokenMetrics.clusterTokens / 100) / 10}k tok (${offloadPct}% local) | saved $${tokenMetrics.savedDollars.toFixed(2)}`;
   }
 }
 

@@ -3,8 +3,13 @@
  * Connects to /api/presence/* and /api/garden/* endpoints.
  */
 
+import { escapeHtml } from './state.js';
+import { featuresReady, homeInfo, has, Features } from './features.js';
+
 export async function fetchPresenceState() {
   try {
+    await featuresReady();
+    if (!has('app:hearth')) return null;       // no Home app, no presence route
     const res = await fetch('/api/presence/status');
     const json = await res.json();
     if (!json.ok) return null;
@@ -273,6 +278,7 @@ export function renderPresence(data) {
         </div>
       `;
     });
+    if (!allEntities.length) html = '<div style="color:var(--term-text-muted); font-size:0.75rem;">No people or pets are set up yet. Add them in the setup panel above, or with a "+ New profile" correction.</div>';
     locContainer.innerHTML = html + `
       <div id="presence-new-profile" style="display:none; grid-column:1/-1; background:var(--term-bg); border:1px dashed var(--term-accent-gold); border-radius:4px; padding:8px; font-size:0.74rem;">
         <b>New recognition profile</b>
@@ -292,30 +298,84 @@ export function renderPresence(data) {
     drawBoxes(locContainer);
   }
 
-  // Render Appliance Status
-  const appContainer = document.getElementById('presence-appliances-box');
-  if (appContainer && data.appliances) {
-    const d = data.appliances.dryer || {};
-    const w = data.appliances.washer || {};
-    const dBadge = d.is_running
-      ? `<span style="color:#22c55e; font-weight:bold;">RUNNING (${d.remaining_time || 'active'})</span>`
-      : (d.finished_recently ? `<span style="color:#eab308; font-weight:bold;">FINISHED (${Math.round(d.last_cycle_minutes_ago || 0)}m ago)</span>` : `<span style="color:var(--term-text-muted);">IDLE / OFF</span>`);
-    const wBadge = w.is_running
-      ? `<span style="color:#22c55e; font-weight:bold;">RUNNING (${w.remaining_time || 'active'})</span>`
-      : (w.finished_recently ? `<span style="color:#eab308; font-weight:bold;">FINISHED (${Math.round(w.last_cycle_minutes_ago || 0)}m ago)</span>` : `<span style="color:var(--term-text-muted);">IDLE / OFF</span>`);
+  // Appliance monitors: one per washer / dryer Home Assistant has (the server sends only those it found)
+  renderAppliances(data.appliances || {});
+  renderPresets(data);
+  renderSightings(data);
+}
 
-    appContainer.innerHTML = `
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+const APPLIANCE_ICON = { washer: '🫧', dryer: '🧺' };
+
+function applianceBadge(a) {
+  if (a.is_running) return `<span style="color:#22c55e; font-weight:bold;">RUNNING (${escapeHtml(a.remaining_time || 'active')})</span>`;
+  if (a.finished_recently) return `<span style="color:#eab308; font-weight:bold;">FINISHED (${Math.round(a.last_cycle_minutes_ago || 0)}m ago)</span>`;
+  return `<span style="color:var(--term-text-muted);">IDLE / OFF</span>`;
+}
+
+export function renderAppliances(appliances) {
+  const wrap = document.getElementById('presence-appliances-wrap');
+  const box = document.getElementById('presence-appliances-box');
+  const kinds = Object.keys(appliances || {});
+  if (wrap) wrap.hidden = kinds.length === 0;      // none found in Home Assistant: no monitor, no empty frame
+  if (!box || !kinds.length) { if (box) box.innerHTML = ''; return; }
+  box.innerHTML = `<div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:8px;">${kinds.map((k) => {
+    const a = appliances[k] || {};
+    return `
         <div style="background:var(--term-bg); padding:6px; border:1px solid var(--term-border-dim); border-radius:3px;">
-          <div style="font-size:0.72rem; color:var(--term-text-muted);">🧺 LG DRYER</div>
-          <div style="font-size:0.82rem; font-weight:bold; margin-top:2px;">${dBadge}</div>
-        </div>
-        <div style="background:var(--term-bg); padding:6px; border:1px solid var(--term-border-dim); border-radius:3px;">
-          <div style="font-size:0.72rem; color:var(--term-text-muted);">🫧 LG WASHER</div>
-          <div style="font-size:0.82rem; font-weight:bold; margin-top:2px;">${wBadge}</div>
-        </div>
-      </div>
-    `;
+          <div style="font-size:0.72rem; color:var(--term-text-muted);">${APPLIANCE_ICON[k] || '🔌'} ${escapeHtml((a.name || k).toUpperCase())}</div>
+          <div style="font-size:0.82rem; font-weight:bold; margin-top:2px;">${applianceBadge(a)}</div>
+        </div>`;
+  }).join('')}</div>`;
+}
+
+// Suggested questions: the household's own names (server) plus a question for each thing Home Assistant actually has.
+export function presetQuestions(data) {
+  const out = [...(homeInfo().questions || [])];
+  const apps = Object.keys((data && data.appliances) || {});
+  if (apps.includes('dryer') || apps.includes('washer')) out.push('Is the laundry done?');
+  const sh = (data && data.smart_home) || {};
+  if (sh.thermostat_state && sh.thermostat_state !== 'unknown') out.push('What is the temperature inside?');
+  return out.length ? out : ['Who is home?'];
+}
+
+export function renderPresets(data) {
+  const box = document.getElementById('courage-presets');
+  if (!box) return;
+  const qs = presetQuestions(data);
+  if (box.dataset.shown === qs.join('|')) return;
+  box.dataset.shown = qs.join('|');
+  box.innerHTML = '';
+  qs.forEach((q) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'preset-btn';
+    b.textContent = `[${q}]`;
+    b.addEventListener('click', () => askCourage(q));
+    box.appendChild(b);
+  });
+}
+
+// Cameras & sightings: real counts and the newest real sightings; shown only when cameras are set up.
+export function renderSightings(data) {
+  const card = document.getElementById('sightings-card');
+  if (!card) return;
+  const home = homeInfo();
+  const cameras = (home.cameras || []).length;
+  card.hidden = !(cameras || home.frigate);
+  if (card.hidden) return;
+  const locs = Object.values(data.locations || {});
+  const inView = locs.filter((l) => l && l.minutes_ago === 0).length;
+  const newest = locs.reduce((m, l) => (l && l.minutes_ago != null && (m == null || l.minutes_ago < m) ? l.minutes_ago : m), null);
+  const set = (id, text) => { const el = document.getElementById(id); if (el) el.textContent = text; };
+  set('sightings-stat-cameras', cameras ? String(cameras) : '—');
+  set('sightings-stat-inview', String(inView));
+  set('sightings-stat-last', newest == null ? '—' : newest < 1 ? 'now' : newest < 90 ? `${Math.round(newest)} min ago` : `${(newest / 60).toFixed(1)} h ago`);
+  set('sightings-updated', `Updated: ${new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`);
+  const log = document.getElementById('sightings-log-box');
+  if (log) {
+    const rows = (data.recent_sightings || []).slice(0, 12).map((x) =>
+      `<div>${escapeHtml(x.timestamp || '')} · <b>${escapeHtml(x.entity || 'someone')}</b>${x.camera ? ` · ${escapeHtml(x.camera)}` : ''}${x.doing ? ` · ${escapeHtml(x.doing)}` : ''}</div>`);
+    log.innerHTML = rows.length ? rows.join('') : 'No sightings yet.';
   }
 }
 
@@ -603,7 +663,7 @@ export async function askCourage(query) {
   const audioEl = document.getElementById('courage-audio-player');
   const btn = document.getElementById('courage-ask-btn');
 
-  if (respBox) respBox.innerHTML = '<span style="color:var(--term-accent-gold);">Thinking with biting sarcasm...</span>';
+  if (respBox) respBox.innerHTML = '<span style="color:var(--term-accent-gold);">Thinking…</span>';
   if (btn) btn.disabled = true;
 
   try {
@@ -617,8 +677,8 @@ export async function askCourage(query) {
       const ans = json.data;
       if (respBox) {
         respBox.innerHTML = `
-          <div style="color:var(--term-accent-gold); font-weight:bold; margin-bottom:4px;">💻 COURAGE COMPUTER:</div>
-          <div style="font-size:0.88rem; line-height:1.4; color:var(--term-text-bright);">${ans.response}</div>
+          <div style="color:var(--term-accent-gold); font-weight:bold; margin-bottom:4px;">💻 ${escapeHtml((((Features.data || {}).agent || {}).name || 'Computer').toUpperCase())}:</div>
+          <div style="font-size:0.88rem; line-height:1.4; color:var(--term-text-bright);">${escapeHtml(ans.response)}</div>
         `;
       }
       if (ans.audio_base64 && audioEl) {
@@ -638,6 +698,11 @@ export async function askCourage(query) {
 
 export async function fetchIrrigationState() {
   try {
+    await featuresReady();
+    const zones = (homeInfo().irrigation || {}).zones || [];
+    const card = document.getElementById('irrigation-card');
+    if (card) card.hidden = zones.length === 0;       // no irrigation block in config.json: no panel, no polling
+    if (!zones.length) return null;
     const res = await fetch('/api/garden/status');
     const json = await res.json();
     if (!json.ok) return null;
@@ -653,12 +718,20 @@ export function renderIrrigation(data) {
   if (!data) return;
 
   // Battery and rain delay badges
+  const irr = homeInfo().irrigation || {};
+  const nZones = Object.keys(data.zones || {}).length;
   const battEl = document.getElementById('irrigation-battery-badge');
-  if (battEl) battEl.innerText = `🔋 Battery: ${data.battery_level}%`;
+  if (battEl) {
+    battEl.hidden = !irr.battery;                               // only when a battery sensor is configured
+    battEl.innerText = typeof data.battery_level === 'number' ? `🔋 Battery: ${data.battery_level}%` : '🔋 Battery: —';
+  }
+  const title = document.getElementById('irrigation-title');
+  if (title) title.textContent = `🌻 IRRIGATION · ${nZones} ZONE${nZones === 1 ? '' : 'S'}`;
 
   const rainBtn = document.getElementById('irrigation-rain-delay-btn');
   if (rainBtn) {
-    rainBtn.innerText = data.rain_delay_active ? '[🌧️ RAIN DELAY: ACTIVE]' : '[☀️ RAIN DELAY: OFF]';
+    rainBtn.hidden = !irr.rain_delay;                           // only when a rain-delay switch is configured
+    rainBtn.innerText = data.rain_delay_active ? '[🌧️ RAIN DELAY: ACTIVE]' : '[RAIN DELAY: OFF]';
     rainBtn.style.color = data.rain_delay_active ? '#38bdf8' : 'var(--term-text-bright)';
   }
 
@@ -675,12 +748,12 @@ export function renderIrrigation(data) {
       html += `
         <div style="background:var(--term-bg); border:1px solid var(--term-border-dim); border-radius:4px; padding:10px;">
           <div style="display:flex; justify-content:space-between; align-items:center;">
-            <span style="font-weight:bold; color:var(--term-text-bright);">${z.name}</span>
+            <span style="font-weight:bold; color:var(--term-text-bright);">${escapeHtml(z.name)}</span>
             ${statusBadge}
           </div>
-          <div style="font-size:0.72rem; color:var(--term-text-muted); margin:4px 0;">${z.description}</div>
+          <div style="font-size:0.72rem; color:var(--term-text-muted); margin:4px 0;">${escapeHtml(z.description)}</div>
           <div style="font-size:0.70rem; color:var(--term-text-muted); font-family:monospace; margin-bottom:8px;">
-            Last: ${z.last_watered ? z.last_watered.replace('T', ' ').substring(0, 16) : 'None'}
+            Last: ${z.last_watered && !['unknown', 'unavailable'].includes(z.last_watered) ? escapeHtml(z.last_watered.replace('T', ' ').substring(0, 16)) : '—'}
           </div>
           <div style="display:flex; gap:6px;">
             <button type="button" class="term-cmd-btn" style="flex:1; background:var(--term-accent-blue); color:#fff; font-weight:bold;" onclick="window.controlIrrigationZone('${key}', 'open', 15)">

@@ -1,7 +1,7 @@
 # StoneSage image: the agent platform and its web cockpit (no apps). Hearth adds itself on top: see hearth.Dockerfile.
 #
 # Shipped as `Dockerfile` in the stonesage repository (docker/entrypoint.py is the first-start helper):
-#     docker build -t ghcr.io/lottage/stonesage:latest .
+#     docker build -t stonesage:local .
 # Lodestone is not on PyPI: it is installed from its repository, at a release tag (the tag is created when a release is cut,
 # together with the StoneSage tag of the same number; never a branch). Point elsewhere with
 #     --build-arg LODESTONE_PIP="lodestone @ git+https://github.com/lottage/lodestone@v0.1.1"
@@ -14,7 +14,7 @@
 FROM python:3.12.7-slim-bookworm AS build
 RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates \
  && rm -rf /var/lib/apt/lists/*
-ARG LODESTONE_PIP="lodestone @ git+https://github.com/lottage/lodestone@v0.1.0"
+ARG LODESTONE_PIP="lodestone @ git+https://github.com/lottage/lodestone@v0.1.0-rc.2"
 COPY docker/requirements.lock.txt /tmp/requirements.txt
 RUN python -m venv /opt/venv \
  && /opt/venv/bin/pip install --no-cache-dir -r /tmp/requirements.txt "${LODESTONE_PIP}"

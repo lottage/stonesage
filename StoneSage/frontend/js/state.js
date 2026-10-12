@@ -5,6 +5,7 @@
 
 export const State = {
   activeTab: 'chat',
+  featuresLoaded: false,       // js/features.js has heard from GET /api/ui/features (tabs this install lacks are hidden by then)
   activeTheme: 'deu',
   activeNode: 'local',
   activeModel: 'coordinator',
@@ -156,7 +157,7 @@ export function switchTab(tabId, updateUrl = true) {
 
   const btn = document.querySelector(`.nav-tab-btn[data-tab="${targetTab}"]`);
   const pane = document.getElementById(`view-${targetTab}`);
-  if (!pane) {
+  if (!pane || (btn && btn.hidden && State.featuresLoaded)) {      // no such tab, or one this install does not have
     // Fallback to chat if invalid tab
     if (targetTab !== 'chat') switchTab('chat', updateUrl);
     return;

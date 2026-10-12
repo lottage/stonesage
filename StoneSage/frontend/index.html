@@ -3,17 +3,19 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>StoneSage Enterprise Harness v4.0</title>
+  <title>StoneSage</title>
 
   <!-- PWA Meta -->
   <meta name="theme-color" content="#12151a">
-  <meta name="description" content="Uniform Enterprise AI Agent Harness, Multimodal Vision, and Roaming PTY Shell">
+  <meta name="description" content="StoneSage: run your own AI agents on your own hardware">
   <link rel="manifest" href="/manifest.webmanifest">
   <link rel="icon" type="image/svg+xml" href="/icon.svg">
   <link rel="apple-touch-icon" href="/icon.svg">
 
   <!-- login plumbing: a 401 from the server sends the page to /login.html (js/auth.js) -->
   <script src="/js/auth.js"></script>
+  <!-- one request per status endpoint, however many parts of the page ask (js/net.js) -->
+  <script src="/js/net.js"></script>
 
   <link rel="stylesheet" id="xterm-css-link" href="/vendor/xterm/xterm.css?v=4.0.4">
   <link rel="stylesheet" href="/style.css?v=4.3.2">
@@ -36,16 +38,17 @@
     <header class="terminal-topbar">
       <div class="topbar-branding">
         <span class="logo-icon">⚡</span>
-        <span class="branding-text-full">STONESAGE AGENT HARNESS</span>
+        <span class="branding-text-full">STONESAGE</span>
         <span class="branding-text-short">STONESAGE</span>
-        <span style="font-size: 0.72rem; color: #22c55e; font-weight: bold; background: rgba(34, 197, 94, 0.15); padding: 1px 5px; border-radius: 3px; border: 1px solid #16a34a;">[v4.0 - Enterprise]</span>
+        <span id="brand-version" hidden style="font-size: 0.72rem; color: var(--term-text-muted); font-weight: bold; padding: 1px 5px; border-radius: 3px; border: 1px solid var(--term-border-dim);"></span>
+        <span id="brand-app" hidden style="font-size: 0.72rem; color: var(--term-accent-gold); font-weight: bold;"></span>
       </div>
 
       <!-- Desktop Controls Toolbar -->
       <div class="topbar-controls-desktop">
         <!-- Live Node Ping Badge -->
-        <button type="button" class="topbar-badge-btn online" id="topbar-ping-badge" onclick="openClusterModal()" title="Inspect Cluster Telemetry & Latencies">
-          <span class="status-dot"></span> <span id="topbar-ping-text">🟢 PROBING...</span>
+        <button type="button" class="topbar-badge-btn" id="topbar-ping-badge" onclick="openClusterModal()" title="Inspect Cluster Telemetry & Latencies">
+          <span class="status-dot"></span> <span id="topbar-ping-text">PROBING…</span>
         </button>
 
         <!-- Node Continuum Selector -->
@@ -68,29 +71,29 @@
           <option value="crt-amber">CRT-A (Phosphor Amber)</option>
         </select>
 
-        <!-- Token Economy Badge -->
-        <span class="topbar-badge" id="topbar-tokens-badge" style="font-family: monospace; font-size: 11px; background: rgba(34, 197, 94, 0.15); color: #22c55e; border: 1px solid #16a34a; padding: 3px 8px; border-radius: 3px; display: inline-flex; align-items: center; gap: 4px;" title="Token Economy: Antigravity Cloud vs Cluster Local Offload">
-          <span>🪙</span> <span>Cloud: 21.5k | Local: 6.0k (22% offload)</span>
+        <!-- Token tally: shown only when a real count exists (GET /api/ui/features "usage") -->
+        <span class="topbar-badge" id="topbar-tokens-badge" hidden style="font-family: monospace; font-size: 11px; color: var(--term-text-bright); border: 1px solid var(--term-border-dim); padding: 3px 8px; border-radius: 3px; display: inline-flex; align-items: center; gap: 4px;" title="Tokens sent to cloud sources today (Boost's own count)">
+          <span>🪙</span> <span id="topbar-tokens-text"></span>
         </span>
 
         <!-- 3D Multi-Tier Citadel Link -->
-        <a href="/citadel3d/" target="_blank" class="topbar-badge-btn online" style="text-decoration: none; color: #f8fafc; font-weight: bold; background: #0284c7; border: 1px solid #38bdf8;" title="Open 3D Multi-Tier Agent Citadel & Physical Kanban">
+        <a href="/citadel3d/" target="_blank" id="topbar-citadel-link" data-needs="shelved" hidden class="topbar-badge-btn online" style="text-decoration: none; color: #f8fafc; font-weight: bold; background: #0284c7; border: 1px solid #38bdf8;" title="Open 3D Multi-Tier Agent Citadel & Physical Kanban">
           🏛️ 3D CITADEL
         </a>
 
         <!-- Out-of-band Global Nudge -->
-        <button type="button" class="btn-nudge-global" onclick="triggerGlobalNudge()" title="Out-of-band Breakout Directive">
+        <button type="button" class="btn-nudge-global" id="topbar-nudge-btn" data-needs="shelved" hidden onclick="triggerGlobalNudge()" title="Out-of-band Breakout Directive">
           ⚡ NUDGE
         </button>
       </div>
 
       <!-- Mobile Quick Controls -->
       <div class="topbar-controls-mobile">
-        <a href="/citadel3d/" target="_blank" class="topbar-badge-btn online" style="text-decoration: none; color: #f8fafc; font-weight: bold; background: #0284c7; border: 1px solid #38bdf8; padding: 2px 6px;" title="3D Citadel">
+        <a href="/citadel3d/" target="_blank" id="mobile-citadel-link" data-needs="shelved" hidden class="topbar-badge-btn online" style="text-decoration: none; color: #f8fafc; font-weight: bold; background: #0284c7; border: 1px solid #38bdf8; padding: 2px 6px;" title="3D Citadel">
           🏛️ 3D
         </a>
-        <button type="button" class="topbar-badge-btn online" id="mobile-ping-btn" onclick="openClusterModal()" title="Live Cluster Telemetry">
-          <span class="status-dot"></span> <span id="mobile-ping-text">🟢 ...</span>
+        <button type="button" class="topbar-badge-btn" id="mobile-ping-btn" onclick="openClusterModal()" title="Live Cluster Telemetry">
+          <span class="status-dot"></span> <span id="mobile-ping-text">…</span>
         </button>
 
         <button type="button" class="topbar-badge-btn" id="mobile-model-btn" onclick="openModelModal()" title="Select Model" style="color:var(--term-text-bright);">
@@ -108,11 +111,11 @@
          ==================================================================== -->
     <nav class="nav-tab-bar">
       <button type="button" class="nav-tab-btn active" data-tab="chat">[F1: CHAT &amp; VISION]</button>
-      <button type="button" class="nav-tab-btn" data-tab="workstation">[F2: WORKSTATION]</button>
-      <button type="button" class="nav-tab-btn" data-tab="terminal">[F3: PTY SHELL]</button>
+      <button type="button" class="nav-tab-btn" data-tab="workstation" data-needs="file_editor" hidden>[F2: WORKSTATION]</button>
+      <button type="button" class="nav-tab-btn" data-tab="terminal" data-needs="web_terminal" hidden>[F3: PTY SHELL]</button>
       <button type="button" class="nav-tab-btn" data-tab="engine">[F4: ENGINE STUDIO]</button>
-      <button type="button" class="nav-tab-btn" data-tab="ha">[F5: SMART HOME &amp; CCTV]</button>
-      <button type="button" class="nav-tab-btn" data-tab="obsidian">[F6: OBSIDIAN]</button>
+      <button type="button" class="nav-tab-btn" data-tab="ha" data-needs="app:hearth" hidden>[F5: SMART HOME &amp; CCTV]</button>
+      <button type="button" class="nav-tab-btn" data-tab="obsidian" data-needs="obsidian" hidden>[F6: OBSIDIAN]</button>
     </nav>
 
     <!-- ====================================================================
@@ -135,7 +138,7 @@
               <span class="status-badge online chat-ws-badge" id="chat-workspace-badge">📁 [WS: Active]</span>
               <span class="chat-agent-label">🤖 AGENT:</span>
               <select class="topbar-select chat-agent-select" id="chat-agent-select" title="Select Sovereign Agent Persona">
-                <option value="courage-computer" selected>✨ courage-computer (Computer: attic computer &amp; sentry)</option>
+                <option value="courage-computer" id="agent-option-default" selected>✨ courage-computer</option>
                 <option value="coder-agent">⚡ coder-agent (Systems Architect &amp; Coder)</option>
                 <option value="wildlife-agent">🌲 wildlife-agent (Perimeter &amp; Fauna Vision)</option>
                 <option value="archivist-agent">📜 archivist-agent (Vector Memory &amp; A-MEM)</option>
@@ -307,7 +310,6 @@
             <div style="background:var(--term-surface); border:1px solid var(--term-border-dim); padding:8px 12px; border-radius:3px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
               <div style="display:flex; align-items:center; gap:8px;">
                 <span style="font-weight:bold; color:var(--term-accent-gold); font-size:0.9rem;">🏛️ SOVEREIGN AGENT 3D DIGITAL ART GALLERY &amp; STUDIO</span>
-                <span class="status-badge online" style="font-size:0.72rem;">BLENDER 4.0.2 (:8095/:9876)</span>
               </div>
               <div style="display:flex; gap:8px;">
                 <button type="button" class="term-cmd-btn" onclick="refresh3DGallery()" title="Refresh Gallery from Cluster">[🔄 REFRESH GALLERY]</button>
@@ -1234,7 +1236,7 @@
             <div class="harness-card" style="margin-bottom:12px;">
               <div class="harness-card-title">
                 <span>🧮 MATHEMATICAL VRAM &amp; KV-CACHE CAPACITY SIZER</span>
-                <span id="capacity-safe-badge" class="status-badge online" style="font-size:0.75rem;">FITS IN VRAM (SAFE)</span>
+                <span id="capacity-safe-badge" class="status-badge" style="font-size:0.75rem;">—</span>
               </div>
               <div class="harness-form-grid" style="margin-bottom:12px;">
                 <div class="form-group">
@@ -1579,7 +1581,7 @@
             <div id="memory-banner-header" style="padding:8px 12px; background:var(--term-surface); border:1px solid var(--term-border-dim); border-radius:4px; margin-bottom:10px; display:flex; justify-content:space-between; align-items:center; font-size:0.8rem; flex-wrap:wrap; gap:8px;">
               <span>⚡ <strong>VALKEY IN-RAM ATOMIC FACT STORE</strong> (<code>config: cluster.valkey_url</code>)</span>
               <div style="display:flex; gap:8px; align-items:center;">
-                <span class="status-badge online" id="amem-total-badge">🟢 189 CARDS</span>
+                <span class="status-badge" id="amem-total-badge">— CARDS</span>
                 <span style="font-size:0.75rem; color:var(--term-text-muted);" id="amem-avg-badge">(&lt; 35 tok/card avg)</span>
               </div>
             </div>
@@ -1611,7 +1613,7 @@
             <div class="harness-card">
               <div style="font-size:0.84rem; color:var(--term-text); line-height:1.6;">
                 <div>• <strong>Operational Invariant:</strong> Synthetic unreviewed sleep ruminations are permanently quarantined into <code>quarantine/</code> to prevent model collapse.</div>
-                <div>• <strong>Dataset Curation:</strong> 70% Real transcripts, code diffs, and HA events + 30% Tier-1 Frontier (Antigravity) audited proofs.</div>
+                <div>• <strong>Dataset Curation:</strong> 70% Real transcripts, code diffs, and HA events + 30% frontier-model audited proofs.</div>
                 <div>• <strong>OTA Model Hot-Reload:</strong> Broadcasts newly merged GGUF models over LAN without operator downtime.</div>
               </div>
           </div>
@@ -1688,13 +1690,14 @@
         </div>
       </section>
 
-      <!-- [F8: HA & CCTV] -->
+      <!-- [F5: HOME] Every panel below starts hidden and is shown by js/features.js / presence_garden.js / fleet.js only when its
+           source exists on this install (GET /api/ui/features, Home Assistant's entities, config.json). No reading is written here. -->
       <section class="view-pane" id="view-ha">
         <div class="harness-container">
           <div class="harness-card-title" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
-            <span>🏠 HOME ASSISTANT OS &amp; SMART HOME COCKPIT</span>
+            <span>🏠 <span id="ha-pane-title">SMART HOME</span></span>
             <div style="display:flex; gap:6px; align-items:center;">
-              <span class="status-badge online" id="ha-connection-badge" style="font-size:0.75rem;">HAOS (ONLINE)</span>
+              <span class="status-badge" id="ha-connection-badge" style="font-size:0.75rem;">Home Assistant: —</span>
               <button type="button" class="term-cmd-btn" id="refresh-ha-btn" onclick="fetchHaDashboard(); fetchPresenceState(); fetchIrrigationState();">[🔄 REFRESH STATES]</button>
             </div>
           </div>
@@ -1702,11 +1705,10 @@
           <!-- Hearth setup wizard: banner while incomplete, panel on demand (js/hearth_setup.js, backend/hearth/setup_wizard.py) -->
           <div id="hearth-setup-root" style="margin-bottom:8px;"></div>
 
-          <!-- Courage Computer Real Presence & Voice Bar -->
-          <div class="harness-card" style="margin-bottom:12px; border:1px solid var(--term-accent-gold); background:rgba(217,119,6,0.04);">
+          <!-- The agent: who is home (people and pets from the household), live cameras, a question box -->
+          <div class="harness-card" id="computer-card" style="margin-bottom:12px; border:1px solid var(--term-accent-gold); background:rgba(217,119,6,0.04);">
             <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; border-bottom:1px solid var(--term-border-dim); padding-bottom:6px; margin-bottom:8px;">
-              <span style="font-weight:bold; color:var(--term-accent-gold); font-size:0.9rem;">💻 COURAGE THE COWARDLY DOG COMPUTER (NOWHERE 1999)</span>
-              <span style="font-size:0.72rem; color:var(--term-text-muted); font-family:monospace;">VOICE: bm_george @ 1.06x | REAL PRESENCE ENGINE</span>
+              <span id="computer-card-title" style="font-weight:bold; color:var(--term-accent-gold); font-size:0.9rem;">💻 PRESENCE</span>
             </div>
 
             <!-- Resident & Pet Real Presence Grid -->
@@ -1716,143 +1718,95 @@
                 <button type="button" class="preset-btn" id="presence-tab-live" onclick="showPresenceTab('live')">[📹 LIVE CAMERAS]</button>
               </div>
               <div id="presence-locations-grid" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:8px;">
-                <div style="color:var(--term-text-muted); font-size:0.75rem;">Loading real-time presence telemetry...</div>
+                <div style="color:var(--term-text-muted); font-size:0.75rem;">Loading presence…</div>
               </div>
               <div id="presence-live-grid" style="display:none; grid-template-columns:repeat(auto-fit, minmax(300px, 1fr)); gap:8px;"></div>
             </div>
 
-            <!-- Appliance Telemetry Row -->
-            <div style="margin-bottom:10px;">
-              <div style="font-size:0.72rem; font-weight:bold; color:var(--term-text-muted); margin-bottom:4px;">🧺 APPLIANCE MONITORS:</div>
+            <!-- Appliance monitors: only the washer / dryer Home Assistant actually has -->
+            <div id="presence-appliances-wrap" hidden style="margin-bottom:10px;">
+              <div style="font-size:0.72rem; font-weight:bold; color:var(--term-text-muted); margin-bottom:4px;">🧺 APPLIANCES:</div>
               <div id="presence-appliances-box"></div>
             </div>
 
-            <!-- Courage Voice Interaction Bar -->
+            <!-- Question bar -->
             <div style="border-top:1px dashed var(--term-border-dim); padding-top:8px;">
               <div style="display:flex; gap:6px; margin-bottom:6px;">
-                <input type="text" id="courage-query-input" class="form-input" placeholder="Ask Computer a question (e.g. Is the laundry done? Where is the cat? What is tomorrow's schedule?)..." style="flex:1; font-size:0.82rem;">
+                <input type="text" id="courage-query-input" class="form-input" placeholder="Ask a question (e.g. Who is home?)" style="flex:1; font-size:0.82rem;">
                 <button type="button" class="term-cmd-btn" id="courage-ask-btn" onclick="askCourage()" style="background:var(--term-accent-gold); color:#000; font-weight:bold; padding:4px 12px;">
-                  [🗣️ ASK COURAGE]
+                  [🗣️ ASK]
                 </button>
               </div>
 
-              <!-- Fast Preset Buttons -->
-              <div style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;">
-                <button type="button" class="preset-btn" onclick="askCourage('is the laundry done?')">[🧺 Laundry Done?]</button>
-                <button type="button" class="preset-btn" onclick="askCourage('where is the cat?')">[🐱 Where is the cat?]</button>
-                <button type="button" class="preset-btn" onclick="askCourage('what is tomorrow\'s schedule?')">[📅 Tomorrow's Schedule]</button>
-                <button type="button" class="preset-btn" onclick="askCourage('how hot is it outside and should I turn off the AC?')">[🌡️ Weather &amp; AC Advice]</button>
-              </div>
+              <!-- Suggested questions, made from the household (people, pets, cameras) and from what Home Assistant has -->
+              <div id="courage-presets" style="display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px;"></div>
 
               <!-- Output Box & Audio Player -->
               <div id="courage-response-box" style="background:var(--term-bg); border:1px solid var(--term-border-dim); border-radius:3px; padding:8px; font-family:monospace; min-height:42px; font-size:0.80rem; color:var(--term-text-muted);">
-                Awaiting your query, you loaf...
+                Ask a question above.
               </div>
               <audio id="courage-audio-player" controls style="display:none; width:100%; margin-top:6px; height:32px;"></audio>
             </div>
           </div>
 
-          <!-- 4-Zone Landscape & Irrigation Cockpit -->
-          <div class="harness-card" style="margin-bottom:12px; border:1px solid var(--term-accent-blue); background:rgba(2,132,199,0.03);">
+          <!-- Irrigation: only when config.json "irrigation" has zones -->
+          <div class="harness-card" id="irrigation-card" hidden style="margin-bottom:12px; border:1px solid var(--term-accent-blue); background:rgba(2,132,199,0.03);">
             <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; border-bottom:1px solid var(--term-border-dim); padding-bottom:6px; margin-bottom:8px;">
-              <span style="font-weight:bold; color:var(--term-accent-blue); font-size:0.9rem;">🌻 4-ZONE LANDSCAPE &amp; SMART IRRIGATION COCKPIT</span>
+              <span id="irrigation-title" style="font-weight:bold; color:var(--term-accent-blue); font-size:0.9rem;">🌻 IRRIGATION</span>
               <div style="display:flex; gap:6px; align-items:center;">
-                <span id="irrigation-battery-badge" class="status-badge" style="font-size:0.72rem;">🔋 Battery: --%</span>
-                <button type="button" class="preset-btn" id="irrigation-rain-delay-btn" onclick="toggleRainDelay()">[☀️ RAIN DELAY: OFF]</button>
+                <span id="irrigation-battery-badge" class="status-badge" hidden style="font-size:0.72rem;">🔋 Battery: —</span>
+                <button type="button" class="preset-btn" id="irrigation-rain-delay-btn" hidden onclick="toggleRainDelay()">[RAIN DELAY]</button>
                 <button type="button" class="term-cmd-btn" onclick="emergencyCloseAll()" style="color:var(--term-accent-red); font-weight:bold;">[🛑 EMERGENCY SHUTOFF ALL]</button>
               </div>
             </div>
 
-            <!-- 4 Zones Grid -->
             <div id="irrigation-zones-grid" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:10px;">
               <div style="color:var(--term-text-muted); font-size:0.75rem;">Loading irrigation valves...</div>
             </div>
           </div>
 
           <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(340px, 1fr)); gap:12px; margin-bottom:12px;">
-            <!-- Nest Thermostat ASCII Dial Box -->
-            <div class="harness-card" style="margin-bottom:0;">
+            <!-- One thermostat card per climate entity Home Assistant reports (js/fleet.js renderThermostats) -->
+            <div id="thermostat-list" style="display:contents;"></div>
+
+            <!-- Cameras and sightings: only when cameras are set up (a household camera or Frigate) -->
+            <div class="harness-card" id="sightings-card" hidden style="margin-bottom:0; display:flex; flex-direction:column;">
               <div style="font-weight:bold; color:var(--term-text-bright); display:flex; justify-content:space-between; align-items:center;">
-                <span>🌡️ GOOGLE NEST THERMOSTAT</span>
-                <span id="thermostat-entity-id" style="font-size:0.72rem; color:var(--term-text-muted); font-family:monospace;">climate.thermostat</span>
-              </div>
-
-              <div class="ascii-thermostat-dial" style="font-family:monospace; background:var(--term-bg); padding:10px; border-radius:4px; margin:8px 0; font-size:0.82rem; line-height:1.4; border:1px solid var(--term-border-dim);">
-.---------------------------------------.<br>
-|&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;HVAC CLIMATE&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;|<br>
-|&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;|<br>
-|&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;CURRENT&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;TARGET&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;|<br>
-|&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="thermostat-temp-big" id="thermostat-current-temp" style="font-size:1.3rem; font-weight:bold; color:var(--term-accent-gold);">72</span>°F&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="thermostat-temp-big" id="thermostat-target-temp" style="font-size:1.3rem; font-weight:bold; color:var(--term-accent-blue);">71</span>°F&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;|<br>
-|&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;|<br>
-|&nbsp;&nbsp;&nbsp;STATE: <span id="thermostat-hvac-state" style="font-weight:bold; color:var(--term-text-bright);">[COOL ACTIVE]</span>&nbsp;&nbsp;&nbsp;HUMID: <span id="thermostat-humidity">45%</span>&nbsp;&nbsp;&nbsp;|<br>
-'---------------------------------------'
-              </div>
-
-              <!-- Temperature Controls -->
-              <div style="display:flex; align-items:center; justify-content:center; gap:10px; margin:8px 0;">
-                <button type="button" class="term-cmd-btn" id="temp-down-btn" style="font-size:1.1rem; padding:2px 14px; font-weight:bold;">[ - ]</button>
-                <input type="range" id="temp-slider" min="60" max="85" value="71" style="width:140px; accent-color:var(--term-accent-blue);">
-                <button type="button" class="term-cmd-btn" id="temp-up-btn" style="font-size:1.1rem; padding:2px 14px; font-weight:bold;">[ + ]</button>
-              </div>
-
-              <!-- HVAC Modes -->
-              <div class="thermostat-modes-row" style="display:flex; gap:6px; justify-content:center; margin:8px 0;">
-                <button type="button" class="preset-btn" data-hvac-mode="heat">[HEAT]</button>
-                <button type="button" class="preset-btn active" data-hvac-mode="cool">[COOL]</button>
-                <button type="button" class="preset-btn" data-hvac-mode="eco">[ECO]</button>
-                <button type="button" class="preset-btn" data-hvac-mode="off">[OFF]</button>
-              </div>
-
-              <!-- home-agent automation dispatch -->
-              <div style="border-top:1px dashed var(--term-border-dim); padding-top:8px; margin-top:8px;">
-                <div style="font-size:0.74rem; color:var(--term-text-muted); margin-bottom:4px;">✨ home-agent (Domestic Concierge & Sentry) Automation Dispatch:</div>
-                <div style="display:flex; gap:6px;">
-                  <input type="text" class="form-input" id="ha-nlp-input" placeholder="e.g. set thermostat to 72, turn off living room lights..." style="flex:1; font-size:0.78rem;">
-                  <button type="button" class="term-cmd-btn" id="ha-nlp-send-btn" style="background:var(--term-accent-blue); color:#fff; font-weight:bold;">[DISPATCH]</button>
-                </div>
-              </div>
-            </div>
-
-            <!-- Tapo CCTV & Perimeter Vigilance Status -->
-            <div class="harness-card" style="margin-bottom:0; display:flex; flex-direction:column;">
-              <div style="font-weight:bold; color:var(--term-text-bright); display:flex; justify-content:space-between; align-items:center;">
-                <span>🌲 WILDLIFE &amp; PERIMETER VIGILANCE</span>
-                <span id="hm-vigilance-time" style="font-size:0.72rem; color:var(--term-text-muted);">Last Check: --</span>
+                <span>📹 CAMERAS &amp; SIGHTINGS</span>
+                <span id="sightings-updated" style="font-size:0.72rem; color:var(--term-text-muted);">Updated: —</span>
               </div>
 
               <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px; margin:8px 0;">
                 <div style="background:var(--term-bg); padding:6px; border:1px solid var(--term-border-dim); border-radius:3px; text-align:center;">
-                  <div style="font-size:0.68rem; color:var(--term-text-muted);">CLIMATE</div>
-                  <div id="hm-stat-climate" style="font-size:0.85rem; font-weight:bold; color:var(--term-text-bright);">72°F Cool</div>
+                  <div style="font-size:0.68rem; color:var(--term-text-muted);">CAMERAS</div>
+                  <div id="sightings-stat-cameras" style="font-size:0.85rem; font-weight:bold; color:var(--term-text-bright);">—</div>
                 </div>
                 <div style="background:var(--term-bg); padding:6px; border:1px solid var(--term-border-dim); border-radius:3px; text-align:center;">
-                  <div style="font-size:0.68rem; color:var(--term-text-muted);">PERIMETER</div>
-                  <div id="hm-stat-perimeter" style="font-size:0.85rem; font-weight:bold; color:#008800;">Secure</div>
+                  <div style="font-size:0.68rem; color:var(--term-text-muted);">IN VIEW NOW</div>
+                  <div id="sightings-stat-inview" style="font-size:0.85rem; font-weight:bold; color:var(--term-text-bright);">—</div>
                 </div>
                 <div style="background:var(--term-bg); padding:6px; border:1px solid var(--term-border-dim); border-radius:3px; text-align:center;">
-                  <div style="font-size:0.68rem; color:var(--term-text-muted);">SENTINEL</div>
-                  <div id="hm-stat-verdict" style="font-size:0.85rem; font-weight:bold; color:#008800;">Nominal</div>
+                  <div style="font-size:0.68rem; color:var(--term-text-muted);">LAST SEEN</div>
+                  <div id="sightings-stat-last" style="font-size:0.85rem; font-weight:bold; color:var(--term-text-bright);">—</div>
                 </div>
               </div>
 
               <div style="flex:1; display:flex; flex-direction:column;">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
-                  <span style="font-size:0.72rem; font-weight:bold; color:var(--term-text-muted);">CAMERA SENTRY LOG:</span>
-                  <span id="ha-ai-integrations-count" style="font-size:0.70rem; color:var(--term-accent-gold);">Ready</span>
+                <div style="margin-bottom:4px;">
+                  <span style="font-size:0.72rem; font-weight:bold; color:var(--term-text-muted);">RECENT SIGHTINGS:</span>
                 </div>
-                <div id="hivemind-vision-log-box" style="flex:1; min-height:120px; max-height:160px; background:var(--term-bg); border:1px solid var(--term-border-dim); border-radius:3px; padding:6px; font-family:monospace; font-size:0.72rem; overflow-y:auto; color:var(--term-text-muted);">
-                  Waiting for vigilance telemetry...
+                <div id="sightings-log-box" style="flex:1; min-height:120px; max-height:160px; background:var(--term-bg); border:1px solid var(--term-border-dim); border-radius:3px; padding:6px; font-family:monospace; font-size:0.72rem; overflow-y:auto; color:var(--term-text-muted);">
+                  No sightings yet.
                 </div>
-                <div id="ha-ai-integrations-list" style="margin-top:6px; font-size:0.72rem;"></div>
               </div>
             </div>
           </div>
 
-          <!-- Smart Home Entities & Switches Table -->
+<!-- Smart Home Entities & Switches Table -->
           <div class="harness-card">
             <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:8px;">
               <span style="font-weight:bold; color:var(--term-text-bright);">⚡ SMART HOME ENTITIES, LIGHTS &amp; SWITCHES</span>
-              <span id="ha-devices-count" style="font-size:0.74rem; color:var(--term-text-muted);">0 entities loaded</span>
+              <span id="ha-devices-count" style="font-size:0.74rem; color:var(--term-text-muted);">— entities</span>
             </div>
 
             <!-- Filters & Search -->
@@ -1862,7 +1816,7 @@
               <button type="button" class="preset-btn" id="ha-filter-switches" onclick="filterHaDevices('switches')">[🔌 PLUGS &amp; SWITCHES]</button>
               <button type="button" class="preset-btn" id="ha-filter-cameras" onclick="filterHaDevices('cameras')">[📹 CAMERAS &amp; SECURITY]</button>
               <button type="button" class="preset-btn" id="ha-filter-all" onclick="filterHaDevices('all')">[ALL ENTITIES]</button>
-              <input type="text" id="ha-search-input" class="form-input" placeholder="Search devices (e.g. living room, dryer, floodlight)..." style="flex:1; min-width:160px; height:26px; font-size:0.75rem;" oninput="onHaSearchInput()">
+              <input type="text" id="ha-search-input" class="form-input" placeholder="Search devices..." style="flex:1; min-width:160px; height:26px; font-size:0.75rem;" oninput="onHaSearchInput()">
             </div>
 
             <div style="overflow-y:auto; max-height:480px; border:1px solid var(--term-border-dim); border-radius:3px; padding:6px; background:var(--term-bg);" id="ha-entities-table">
@@ -1905,7 +1859,7 @@
         <div id="mkdir-agent-fields" style="margin-bottom:14px; padding:8px; background:var(--term-bg); border:1px solid var(--term-border-dim); border-radius:3px;">
           <div style="margin-bottom:8px;">
             <label style="display:block; font-size:0.72rem; color:var(--term-text-muted); margin-bottom:2px;">Agent Name:</label>
-            <input type="text" id="mkdir-agent-name" class="topbar-select" style="width:100%; padding:4px;" placeholder="e.g. Hephaestus or Nest Sentinel">
+            <input type="text" id="mkdir-agent-name" class="topbar-select" style="width:100%; padding:4px;" placeholder="e.g. Hephaestus or Scout">
           </div>
           <div>
             <label style="display:block; font-size:0.72rem; color:var(--term-text-muted); margin-bottom:2px;">Specialty / Technical Focus:</label>

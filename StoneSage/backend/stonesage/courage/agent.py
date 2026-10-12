@@ -103,6 +103,17 @@ def spoken(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
+def plain_text(text: str) -> str:
+    """Reply text with no markdown (**bold**, *italic*, `code`, '#' headings, '-' and '*' bullets), which a speaker would
+    read out, and with the typographic spaces (U+202F, U+00A0) made normal ones. Idempotent: plain_text(plain_text(t)) = plain_text(t)."""
+    text = (text or "").replace(" ", " ").replace(" ", " ")
+    text = re.sub(r"\*\*(.+?)\*\*", r"\1", text, flags=re.S)
+    text = re.sub(r"(?<![\w*])\*(?![\s*])([^*\n]+?)\*(?![\w*])", r"\1", text)
+    text = re.sub(r"`([^`\n]*)`", r"\1", text)
+    text = re.sub(r"^[ \t]*#{1,6}[ \t]+", "", text, flags=re.M)
+    return re.sub(r"^[ \t]*[-*][ \t]+", "", text, flags=re.M)
+
+
 def streamed(events: Iterator[Dict[str, Any]]) -> Iterator[Dict[str, Any]]:
     """run()'s events for a client that shows or speaks 'partial' text as it comes: the final event then carries only
     the rest of the answer (its full text is under 'full'). An answer that does not continue what was streamed (a
@@ -497,8 +508,11 @@ class CourageAgent:
         tr = TurnTrace(session_id, last_user if isinstance(last_user, str) else "")
         try:
             for ev in self._run(history, session_id, gen, tr):
+                if ev["type"] == "partial":
+                    ev = dict(ev, content=plain_text(ev.get("content") or ""))
                 if ev["type"] == "final":
                     ev = self._escalate(ev, tr, session_id)
+                    ev = dict(ev, content=plain_text(ev.get("content") or ""))   # no markdown: it is spoken aloud too
                     tr.end("answered", ev.get("content") or "")
                     if gen[0]:
                         yield {"type": "usage", "completion_tokens": gen[0],

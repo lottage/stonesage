@@ -7,6 +7,7 @@ computer persona with Kokoro TTS audio generation (bm_george @ 1.06x on the voic
 """
 
 import os
+import re
 import sys
 import time
 import json
@@ -142,86 +143,64 @@ class HomePresenceHub:
             logger.warning(f"Failed to list recent camera snapshots: {e}")
         return sightings
 
+    @staticmethod
+    def find_appliances(state_map: Dict[str, Any]) -> Dict[str, Dict[str, str]]:
+        """The washer and dryer THIS Home Assistant has, by entity name (not by brand): kind -> {status, power, remaining}
+        entity ids ('' for a part that is not there). A kind with no status entity is not in the answer, so the page shows
+        no monitor for a home without one. (A dishwasher is not a washer: the word must stand alone in the entity id.)"""
+        found: Dict[str, Dict[str, str]] = {}
+        for kind in ("washer", "dryer"):
+            word = re.compile(r"(?:^|_)%s(?:_|$)" % kind)
+            status = ""
+            for suffix in ("current_status", "status", "state", "machine_state", "run_state"):
+                if "sensor.%s_%s" % (kind, suffix) in state_map:
+                    status = "sensor.%s_%s" % (kind, suffix)
+                    break
+            if not status:
+                status = next((e for e in sorted(state_map) if e.startswith("sensor.") and word.search(e.split(".", 1)[1])
+                               and e.rsplit("_", 1)[-1] in ("status", "state")), "")
+            if not status:
+                continue
+            power = "switch.%s_power" % kind
+            remaining = "sensor.%s_remaining_time" % kind
+            found[kind] = {"status": status, "power": power if power in state_map else "",
+                           "remaining": remaining if remaining in state_map else ""}
+        return found
+
     def get_appliance_status(self) -> Dict[str, Any]:
-        """Polls Home Assistant for Washer and Dryer telemetry."""
-        result = {
-            "dryer": {
-                "power": "off",
-                "status": "idle",
-                "remaining_time": None,
-                "is_running": False,
-                "finished_recently": False,
-                "last_cycle_minutes_ago": None
-            },
-            "washer": {
-                "power": "off",
-                "status": "idle",
-                "remaining_time": None,
-                "is_running": False,
-                "finished_recently": False,
-                "last_cycle_minutes_ago": None
-            }
-        }
+        """Washer and dryer telemetry from Home Assistant: only the appliances it actually has ({} when there are none, or
+        when Home Assistant cannot be read: nothing is guessed)."""
+        result: Dict[str, Any] = {}
         try:
             states = hass_connector.get_all_states()
             state_map = {s["entity_id"]: s for s in states}
-
-            # Dryer
-            dryer_status = state_map.get("sensor.dryer_current_status", {})
-            dryer_power = state_map.get("switch.dryer_power", {})
-            dryer_rem = state_map.get("sensor.dryer_remaining_time", {})
-
-            dryer_st = dryer_status.get("state", "power_off")
-            dryer_pw = dryer_power.get("state", "off")
-            dryer_running = dryer_st not in ("power_off", "standby", "off", "unavailable", "unknown") and dryer_pw == "on"
-            
-            result["dryer"]["power"] = dryer_pw
-            result["dryer"]["status"] = dryer_st
-            result["dryer"]["is_running"] = dryer_running
-            if dryer_rem.get("state") not in (None, "unavailable", "unknown"):
-                result["dryer"]["remaining_time"] = dryer_rem.get("state")
-
-            # Calculate minutes since last change
-            last_changed = dryer_status.get("last_changed")
-            if last_changed:
-                try:
-                    dt = datetime.fromisoformat(last_changed.replace("Z", "+00:00"))
-                    diff_mins = round((datetime.now(timezone.utc) - dt).total_seconds() / 60.0, 1)
-                    result["dryer"]["last_cycle_minutes_ago"] = diff_mins
-                    if dryer_st in ("power_off", "standby", "end") and diff_mins < 180:
-                        result["dryer"]["finished_recently"] = True
-                except Exception:
-                    pass
-
-            # Washer
-            washer_status = state_map.get("sensor.washer_current_status", {})
-            washer_power = state_map.get("switch.washer_power", {})
-            washer_rem = state_map.get("sensor.washer_remaining_time", {})
-
-            washer_st = washer_status.get("state", "power_off")
-            washer_pw = washer_power.get("state", "off")
-            washer_running = washer_st not in ("power_off", "standby", "off", "unavailable", "unknown") and washer_pw == "on"
-
-            result["washer"]["power"] = washer_pw
-            result["washer"]["status"] = washer_st
-            result["washer"]["is_running"] = washer_running
-            if washer_rem.get("state") not in (None, "unavailable", "unknown"):
-                result["washer"]["remaining_time"] = washer_rem.get("state")
-
-            last_changed_w = washer_status.get("last_changed")
-            if last_changed_w:
-                try:
-                    dt_w = datetime.fromisoformat(last_changed_w.replace("Z", "+00:00"))
-                    diff_mins_w = round((datetime.now(timezone.utc) - dt_w).total_seconds() / 60.0, 1)
-                    result["washer"]["last_cycle_minutes_ago"] = diff_mins_w
-                    if washer_st in ("power_off", "standby", "end") and diff_mins_w < 180:
-                        result["washer"]["finished_recently"] = True
-                except Exception:
-                    pass
-
+            for kind, ents in self.find_appliances(state_map).items():
+                st_obj = state_map[ents["status"]]
+                st = st_obj.get("state", "unknown")
+                pw = state_map.get(ents["power"], {}).get("state", "") if ents["power"] else ""
+                rem = state_map.get(ents["remaining"], {}).get("state") if ents["remaining"] else None
+                idle_states = ("power_off", "standby", "off", "unavailable", "unknown", "none", "end")
+                # a power switch, when the appliance has one, must also be on; without one the status alone decides
+                running = st not in idle_states and (pw == "on" if ents["power"] else True)
+                item: Dict[str, Any] = {
+                    "name": kind.title(), "power": pw or None, "status": st, "remaining_time": None,
+                    "is_running": running, "finished_recently": False, "last_cycle_minutes_ago": None,
+                }
+                if rem not in (None, "unavailable", "unknown"):
+                    item["remaining_time"] = rem
+                last_changed = st_obj.get("last_changed")
+                if last_changed:
+                    try:
+                        dt = datetime.fromisoformat(last_changed.replace("Z", "+00:00"))
+                        diff = round((datetime.now(timezone.utc) - dt).total_seconds() / 60.0, 1)
+                        item["last_cycle_minutes_ago"] = diff
+                        if st in ("power_off", "standby", "end") and diff < 180:
+                            item["finished_recently"] = True
+                    except Exception:
+                        pass
+                result[kind] = item
         except Exception as e:
             logger.warning(f"Error checking appliance telemetry: {e}")
-
         return result
 
     def invalidate(self) -> None:
@@ -287,7 +266,7 @@ class HomePresenceHub:
             "appliances": appliances,
             "smart_home": ha_info,
             "voice_persona": {
-                "name": "Courage Computer",
+                "name": "Computer",
                 "voice_model": "bm_george",
                 "speed": 1.06,
                 "status": "ready"
@@ -306,15 +285,18 @@ class HomePresenceHub:
         """
         presence = self.get_full_presence_state()
         
-        # Build concise telemetry context
-        telemetry_summary = [
-            f"- Current Time: {presence['timestamp']}",
-            f"- Owner's Phone Location: {presence['smart_home']['owner_phone']}",
-            f"- Indoor Nest Thermostat: {presence['smart_home']['thermostat_temp']}°F ({presence['smart_home']['thermostat_state']})",
-            f"- Outdoor Weather: {presence['smart_home']['weather']}, {presence['smart_home']['weather_temp']}°F",
-            f"- Dryer Power: {presence['appliances']['dryer']['power']}, Status: {presence['appliances']['dryer']['status']}, Running: {presence['appliances']['dryer']['is_running']}, Last Changed: {presence['appliances']['dryer']['last_cycle_minutes_ago']} min ago",
-            f"- Washer Power: {presence['appliances']['washer']['power']}, Status: {presence['appliances']['washer']['status']}, Running: {presence['appliances']['washer']['is_running']}, Last Changed: {presence['appliances']['washer']['last_cycle_minutes_ago']} min ago",
-        ]
+        # Build concise telemetry context: only what Home Assistant actually reported
+        sh = presence["smart_home"]
+        telemetry_summary = [f"- Current Time: {presence['timestamp']}"]
+        if sh["owner_phone"] != "unknown":
+            telemetry_summary.append(f"- Owner's Phone Location: {sh['owner_phone']}")
+        if sh["thermostat_state"] != "unknown":
+            telemetry_summary.append(f"- Indoor thermostat: {sh['thermostat_temp']} ({sh['thermostat_state']})")
+        if sh["weather"] != "unknown":
+            telemetry_summary.append(f"- Outdoor Weather: {sh['weather']}, {sh['weather_temp']}")
+        for kind, a in presence["appliances"].items():
+            telemetry_summary.append(f"- {a['name']} Power: {a['power'] or 'n/a'}, Status: {a['status']}, Running: {a['is_running']}, "
+                                     f"Last Changed: {a['last_cycle_minutes_ago']} min ago")
         for ent, loc in presence["locations"].items():
             telemetry_summary.append(f"- Resident/Pet '{ent.capitalize()}': Last seen on camera {loc['minutes_ago']} minutes ago ({loc['last_seen']})")
 
@@ -324,7 +306,7 @@ class HomePresenceHub:
         query_lower = query.lower()
         deterministic_response = None
 
-        if any(w in query_lower for w in ["laundry", "dryer", "clothes dry"]):
+        if "dryer" in presence["appliances"] and any(w in query_lower for w in ["laundry", "dryer", "clothes dry"]):
             dryer = presence["appliances"]["dryer"]
             if dryer["is_running"]:
                 deterministic_response = f"No, you hopeless loaf! The dryer is still clattering away. It has roughly {dryer['remaining_time'] or 'a few'} minutes remaining. Go sit back down!"

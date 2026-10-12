@@ -513,6 +513,7 @@
  "/api/health/all": {
   "keys": [
    "checked_at",
+   "not_set_up",
    "ok",
    "services",
    "summary"

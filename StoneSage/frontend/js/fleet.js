@@ -7,27 +7,31 @@ import { State, escapeHtml } from './state.js';
 import { switchSession } from './chat.js';
 import { openFileInTerminal } from './terminal.js';
 import { Profile, engine, engineShort } from './profile.js';
+import { featuresReady, has, homeInfo } from './features.js';
 
 export function initFleet() {
   loadFleetInstances();
   loadAmemCards();
-  loadObsidianNotes();
   loadWorkspaces();
-  loadHaData();
-  loadTrainerWatchdogData();
+  // what only some installs have is loaded once the server has said this one does (js/features.js)
+  featuresReady().then(() => {
+    if (has('obsidian')) loadObsidianNotes();
+    if (has('app:hearth')) loadHaData();
+    if (has('shelved')) loadTrainerWatchdogData();
+  });
 
-  // Periodic background telemetry polling (every 8s)
+  // Periodic background telemetry polling (every 8s), not while the page is hidden
   setInterval(() => {
-    loadFleetInstances(false);
+    if (!document.hidden) loadFleetInstances(false);
   }, 8000);
 
   // Tab switch listener to refresh data on demand
   window.addEventListener('stonesage:tab-switched', (e) => {
     if (e.detail.tab === 'fleet') loadFleetInstances(true);
     if (e.detail.tab === 'memory') loadAmemCards();
-    if (e.detail.tab === 'obsidian') loadObsidianNotes();
-    if (e.detail.tab === 'ha') loadHaData();
-    if (e.detail.tab === 'trainer') loadTrainerWatchdogData();
+    if (e.detail.tab === 'obsidian' && has('obsidian')) loadObsidianNotes();
+    if (e.detail.tab === 'ha' && has('app:hearth')) loadHaData();
+    if (e.detail.tab === 'trainer' && has('shelved')) loadTrainerWatchdogData();
     if (e.detail.tab === 'workstation') {
       loadWorkspaces();
       loadWorkstationTree();
@@ -197,6 +201,7 @@ export async function loadFleetInstances(forceRefresh = false) {
   const mobileModelText = document.getElementById('mobile-model-text');
 
   try {
+    await featuresReady();      // which providers and services this install has decides what the pickers list
     const [instRes, healthRes, proxRes, modelsRes, modesRes] = await Promise.all([
       fetch('/api/harness/instances').then(r => r.json()).catch(() => ({ ok: false })),
       fetch('/api/cluster/health').then(r => r.json()).catch(() => ({ ok: false })),
@@ -302,7 +307,8 @@ function renderServiceHealth(res, pingBadge, mobilePingBtn, topbarPingText, mobi
     return;
   }
   const up = res.services.filter(s => s.ok).length;
-  const total = res.services.length;
+  const total = res.services.length;           // only what this install has set up: an unconfigured service is not "down"
+  const idle = Array.isArray(res.not_set_up) ? res.not_set_up : [];
   const cls = res.ok ? 'topbar-badge-btn online' : 'topbar-badge-btn offline';
   if (topbarPingText) topbarPingText.textContent = `${res.ok ? '🟢' : '🔴'} ${up}/${total} UP`;
   if (mobilePingText) mobilePingText.textContent = `${up}/${total}`;
@@ -310,6 +316,8 @@ function renderServiceHealth(res, pingBadge, mobilePingBtn, topbarPingText, mobi
   if (mobilePingBtn) mobilePingBtn.className = cls;
   if (!list) return;
 
+  const notSetUp = idle.length ? `
+      <div style="margin-top:6px; color:var(--term-text-muted);">NOT SET UP (optional, not counted): ${idle.map(i => escapeHtml(i.name)).join(', ')}</div>` : '';
   list.innerHTML = res.services.map(s => {
     const d = s.detail || {};
     const info = d.model
@@ -323,7 +331,7 @@ function renderServiceHealth(res, pingBadge, mobilePingBtn, topbarPingText, mobi
         <span style="color:var(--term-text-muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${info}</span>
         <span style="margin-left:auto; color:var(--term-text-muted);">${s.latency_ms != null ? s.latency_ms + 'ms' : ''}</span>
       </div>`;
-  }).join('');
+  }).join('') + notSetUp;
 }
 
 function updateModelSelectors(cluster, topbarModelSelect, mobileModelText, modelsInfo = null, modesInfo = null) {
@@ -347,11 +355,12 @@ function updateModelSelectors(cluster, topbarModelSelect, mobileModelText, model
   const workerName = w.name, workerDesc = w.desc, workerShort = w.short;
   window._coordShort = coordShort;
 
+  // Only what this install has: the worker when config.json names one, a cloud model when its API key is stored (a key is
+  // not a status: nothing is probed for a page load, so those entries carry no green dot).
   const models = [
-    { id: 'antigravity', name: '🌌 Antigravity Frontier Director (Tier-1 Hybrid)', short: 'AGY Director', desc: 'Tier-1 Meta-Verifier directing cluster to minimize cloud tokens', online: true, latency: null },
     { id: 'coordinator', name: coordName, short: coordShort, desc: coordDesc, online: coordOnline, latency: coordData.latency_ms },
-    { id: 'worker', name: workerName, short: workerShort, desc: workerDesc, online: workerOnline, latency: workerData.latency_ms },
-    { id: 'gemini', name: 'Gemini Tier-1 (Frontier Cloud)', short: 'Gemini', desc: 'Supreme Arbiter & Meta-Verifier', online: true, latency: null },
+    ...(has('service:worker') ? [{ id: 'worker', name: workerName, short: workerShort, desc: workerDesc, online: workerOnline, latency: workerData.latency_ms }] : []),
+    ...(has('provider:gemini') ? [{ id: 'gemini', name: 'Gemini (cloud)', short: 'Gemini', desc: 'API key set', online: null, latency: null }] : []),
     ...(window.boostModelEntries || [])  // js/boost.js: free pool entries while Boost chat is on
   ];
 
@@ -360,7 +369,7 @@ function updateModelSelectors(cluster, topbarModelSelect, mobileModelText, model
   if (topbarModelSelect) {
     const optionsHtml = models.map(m => `
       <option value="${m.id}" ${State.activeModel === m.id ? 'selected' : ''}>
-        ${m.online ? '🟢' : '🔴'} ${escapeHtml(m.name)}
+        ${m.online === null ? '⚪' : (m.online ? '🟢' : '🔴')} ${escapeHtml(m.name)}
       </option>
     `).join('');
     if (topbarModelSelect.innerHTML !== optionsHtml) {
@@ -371,7 +380,7 @@ function updateModelSelectors(cluster, topbarModelSelect, mobileModelText, model
 
   if (mobileModelText) {
     const curr = models.find(m => m.id === State.activeModel) || models[0];
-    const shortName = curr.id === 'antigravity' ? 'AGY' : (curr.id === 'gemini' ? 'Frontier' : curr.short);
+    const shortName = curr.id === 'gemini' ? 'Gemini' : curr.short;
     mobileModelText.textContent = `🤖 ${shortName}`;
   }
 
@@ -381,7 +390,7 @@ function updateModelSelectors(cluster, topbarModelSelect, mobileModelText, model
       <div class="mobile-popover-item ${State.activeModel === m.id ? 'active' : ''}" onclick="selectModel('${m.id}')">
         <div>
           <div style="font-weight:bold; color:var(--term-text-bright); display:flex; align-items:center; gap:6px;">
-            <span>${m.online ? '🟢' : '🔴'}</span>
+            <span>${m.online === null ? '⚪' : (m.online ? '🟢' : '🔴')}</span>
             <span>${escapeHtml(m.name)}</span>
             ${State.activeModel === m.id ? '<span style="font-size:0.7rem; color:var(--term-accent-gold);">[ACTIVE]</span>' : ''}
           </div>
@@ -426,14 +435,14 @@ function renderClusterHealthPopover(cluster, nodes) {
         <span>${e.online ? '🟢' : '🔴'} ${escapeHtml(e.label || e.role)} (:${e.port})</span>
         <span>${e.online ? (e.ctx_per_slot ? `${e.ctx_per_slot}×${e.slots || 1} ctx` : 'online') : 'Offline'}</span>
       </div>`).join('')}
-      <div style="display:flex; justify-content:space-between;">
-        <span>${mcp?.online ? '🟢' : '🔴'} Cluster MCP Bridge (:8765)</span>
+      ${has('service:mcp') ? `<div style="display:flex; justify-content:space-between;">
+        <span>${mcp?.online ? '🟢' : '🔴'} Cluster MCP Bridge</span>
         <span>${mcp?.online ? `${mcp.latency_ms}ms` : 'Offline'}</span>
-      </div>
-      <div style="display:flex; justify-content:space-between;">
-        <span>${qdrant?.online ? '🟢' : '🔴'} Qdrant Vector Brain (:6333)</span>
+      </div>` : ''}
+      ${has('service:qdrant') ? `<div style="display:flex; justify-content:space-between;">
+        <span>${qdrant?.online ? '🟢' : '🔴'} Qdrant Vector Brain</span>
         <span>${qdrant?.online ? `${qdrant.latency_ms}ms` : 'Offline'}</span>
-      </div>
+      </div>` : ''}
     </div>
     ${nodesHtml}
   `;
@@ -1022,7 +1031,7 @@ window.selectModel = function(modelId) {
   if (sel) sel.value = modelId;
   const mobText = document.getElementById('mobile-model-text');
   if (mobText) {
-    mobText.textContent = modelId === 'antigravity' ? '🌌 AGY' : (modelId === 'gemini' ? '⚡ Frontier' : `🤖 ${engineShort(modelId)}`);
+    mobText.textContent = modelId === 'gemini' ? '☁️ Gemini' : `🤖 ${engineShort(modelId)}`;
   }
   closeModelModal();
   if (cachedClusterHealth) {
@@ -1051,28 +1060,90 @@ window.toggleHaSwitch = async function(entityId) {
   }
 };
 
-window.adjustNestTemp = async function(delta) {
-  try {
-    const dashRes = await fetch('/api/ha/dashboard');
-    const dash = await dashRes.json();
-    const climate = (dash.climate || [])[0];
-    if (!climate) return;
-    const currentTarget = (climate.attributes && climate.attributes.temperature) || 69;
-    const newTarget = Math.min(85, Math.max(60, Math.round(currentTarget + delta)));
-    await fetch('/api/ha/service', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        domain: 'climate',
-        service: 'set_temperature',
-        service_data: { entity_id: climate.entity_id, temperature: newTarget }
-      })
-    });
-    setTimeout(loadHaData, 600);
-  } catch (err) {
-    console.warn('Error adjusting Nest temp:', err);
-  }
-};
+// ---- thermostats: one card per climate entity Home Assistant reports, named and ranged as Home Assistant says ----------
+const num = (v) => (typeof v === 'number' && isFinite(v) ? v : null);
+const shown = (v) => (num(v) === null ? '—' : String(Math.round(v * 10) / 10));
+
+function thermostatCard(c) {
+  const a = c.attributes || {};
+  const name = c.friendly_name || c.entity_id;
+  const cur = num(a.current_temperature), target = num(a.temperature);
+  const low = num(a.target_temp_low), high = num(a.target_temp_high);
+  const step = num(a.target_temp_step) || 1;
+  const min = num(a.min_temp), max = num(a.max_temp);
+  const modes = Array.isArray(a.hvac_modes) ? a.hvac_modes : [];
+  const unavailable = ['unavailable', 'unknown'].includes(String(c.state));
+  const canSet = target !== null && !unavailable;
+  const slider = canSet && min !== null && max !== null
+    ? `<input type="range" data-thermo="slider" min="${min}" max="${max}" step="${step}" value="${target}" style="width:140px; accent-color:var(--term-accent-blue);">`
+    : '';
+  const targetText = target !== null ? shown(target) : (low !== null && high !== null ? `${shown(low)}–${shown(high)}` : '—');
+  return `
+    <div class="harness-card thermostat-card" data-entity="${escapeHtml(c.entity_id)}" data-step="${step}" data-min="${min ?? ''}" data-max="${max ?? ''}" style="margin-bottom:0;">
+      <div style="font-weight:bold; color:var(--term-text-bright); display:flex; justify-content:space-between; align-items:center; gap:8px;">
+        <span>🌡️ ${escapeHtml(String(name).toUpperCase())}</span>
+        <span style="font-size:0.72rem; color:var(--term-text-muted); font-family:monospace;">${escapeHtml(c.entity_id)}</span>
+      </div>
+      <div style="font-family:monospace; background:var(--term-bg); padding:10px; border-radius:4px; margin:8px 0; font-size:0.82rem; line-height:1.6; border:1px solid var(--term-border-dim);">
+        <div style="display:flex; justify-content:space-around; text-align:center;">
+          <div><div style="font-size:0.7rem; color:var(--term-text-muted);">CURRENT</div><span data-thermo="current" style="font-size:1.3rem; font-weight:bold; color:var(--term-accent-gold);">${shown(cur)}</span>°</div>
+          <div><div style="font-size:0.7rem; color:var(--term-text-muted);">TARGET</div><span data-thermo="target" style="font-size:1.3rem; font-weight:bold; color:var(--term-accent-blue);">${targetText}</span>°</div>
+        </div>
+        <div style="margin-top:6px;">MODE: <b>${escapeHtml(unavailable ? String(c.state).toUpperCase() : String(c.state || '—').toUpperCase())}</b>${a.hvac_action ? ` · NOW: <b>${escapeHtml(String(a.hvac_action).toUpperCase())}</b>` : ''}${num(a.current_humidity) !== null ? ` · HUMIDITY: <b>${Math.round(a.current_humidity)}%</b>` : ''}</div>
+      </div>
+      ${canSet ? `<div style="display:flex; align-items:center; justify-content:center; gap:10px; margin:8px 0;">
+        <button type="button" class="term-cmd-btn" data-thermo="down" style="font-size:1.1rem; padding:2px 14px; font-weight:bold;">[ - ]</button>
+        ${slider}
+        <button type="button" class="term-cmd-btn" data-thermo="up" style="font-size:1.1rem; padding:2px 14px; font-weight:bold;">[ + ]</button>
+      </div>` : ''}
+      ${modes.length ? `<div style="display:flex; gap:6px; justify-content:center; flex-wrap:wrap; margin:8px 0;">${modes.map((m) =>
+        `<button type="button" class="preset-btn ${m === c.state ? 'active' : ''}" data-thermo="mode" data-mode="${escapeHtml(m)}">[${escapeHtml(String(m).toUpperCase())}]</button>`).join('')}</div>` : ''}
+    </div>`;
+}
+
+async function haService(domain, service, data) {
+  await fetch('/api/ha/service', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ domain, service, service_data: data })
+  });
+  setTimeout(loadHaData, 600);
+}
+
+let thermostatsBound = false;
+function bindThermostats(list) {
+  if (thermostatsBound) return;
+  thermostatsBound = true;
+  const act = (card, what, value) => {
+    const entity = card.dataset.entity;
+    const step = Number(card.dataset.step) || 1;
+    const min = card.dataset.min === '' ? -Infinity : Number(card.dataset.min);
+    const max = card.dataset.max === '' ? Infinity : Number(card.dataset.max);
+    const cur = Number((card.querySelector('[data-thermo="target"]') || {}).textContent);
+    if (what === 'mode') return haService('climate', 'set_hvac_mode', { entity_id: entity, hvac_mode: value });
+    if (what === 'set') return haService('climate', 'set_temperature', { entity_id: entity, temperature: value });
+    if (!isFinite(cur)) return null;
+    return haService('climate', 'set_temperature', { entity_id: entity, temperature: Math.min(max, Math.max(min, cur + (what === 'up' ? step : -step))) });
+  };
+  list.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-thermo]');
+    const card = b && b.closest('.thermostat-card');
+    if (!card || !['up', 'down', 'mode'].includes(b.dataset.thermo)) return;
+    act(card, b.dataset.thermo, b.dataset.mode).catch((err) => console.warn('thermostat command failed:', err));
+  });
+  list.addEventListener('change', (e) => {
+    const b = e.target.closest('[data-thermo="slider"]');
+    const card = b && b.closest('.thermostat-card');
+    if (card) act(card, 'set', Number(b.value)).catch((err) => console.warn('thermostat command failed:', err));
+  });
+}
+
+export function renderThermostats(climates) {
+  const list = document.getElementById('thermostat-list');
+  if (!list) return;
+  bindThermostats(list);
+  const html = (climates || []).map(thermostatCard).join('');     // none reported: no card at all
+  if (list.dataset.html !== html) { list.dataset.html = html; list.innerHTML = html; }
+}
 
 export async function loadHaData() {
   const container = document.getElementById('view-ha');
@@ -1089,80 +1160,13 @@ export async function loadHaData() {
       connBadge.className = `status-badge ${haStatus.online ? 'online' : 'offline'}`;
       const haHost = haStatus.url ? haStatus.url.replace(/^https?:\/\//, '') : 'Home Assistant';
       connBadge.textContent = haStatus.online ? `HA: ${haHost} (ONLINE ${haStatus.latency_ms ?? '?'}ms)` : `HA: ${haHost} (OFFLINE)`;
-    }
-
-    const climate = (haDash.climate || [])[0] || {};
-    const climateAttrs = climate.attributes || {};
-    const currentTemp = climateAttrs.current_temperature !== undefined ? Math.round(climateAttrs.current_temperature) : 72;
-    const targetTemp = climateAttrs.temperature !== undefined ? Math.round(climateAttrs.temperature) : 71;
-    const hvacMode = (climate.state || 'cool').toUpperCase();
-
-    const curElem = document.getElementById('thermostat-current-temp');
-    const tarElem = document.getElementById('thermostat-target-temp');
-    const stateElem = document.getElementById('thermostat-hvac-state');
-    const humElem = document.getElementById('thermostat-humidity');
-    const eidElem = document.getElementById('thermostat-entity-id');
-    const slider = document.getElementById('temp-slider');
-
-    if (curElem) curElem.textContent = currentTemp;
-    if (tarElem) tarElem.textContent = targetTemp;
-    if (stateElem) stateElem.textContent = `[${hvacMode} ACTIVE]`;
-    if (humElem && climateAttrs.current_humidity) humElem.textContent = `${climateAttrs.current_humidity}%`;
-    if (eidElem && climate.entity_id) eidElem.textContent = climate.entity_id;
-    if (slider) slider.value = targetTemp;
-
-    // Attach temp button listeners if not already bound
-    const downBtn = document.getElementById('temp-down-btn');
-    const upBtn = document.getElementById('temp-up-btn');
-    if (downBtn && !downBtn._bound) {
-      downBtn._bound = true;
-      downBtn.addEventListener('click', () => window.adjustNestTemp(-1));
-    }
-    if (upBtn && !upBtn._bound) {
-      upBtn._bound = true;
-      upBtn.addEventListener('click', () => window.adjustNestTemp(1));
-    }
-    if (slider && !slider._bound) {
-      slider._bound = true;
-      slider.addEventListener('change', async () => {
-        const val = parseInt(slider.value, 10);
-        if (climate.entity_id) {
-          await fetch('/api/ha/service', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              domain: 'climate',
-              service: 'set_temperature',
-              service_data: { entity_id: climate.entity_id, temperature: val }
-            })
-          });
-          setTimeout(loadHaData, 600);
-        }
-      });
-    }
-
-    // Attach HVAC mode buttons
-    document.querySelectorAll('.thermostat-modes-row button').forEach(b => {
-      const mode = b.dataset.hvacMode;
-      b.classList.toggle('active', mode === (climate.state || 'cool'));
-      if (!b._bound) {
-        b._bound = true;
-        b.addEventListener('click', async () => {
-          if (climate.entity_id && mode) {
-            await fetch('/api/ha/service', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                domain: 'climate',
-                service: 'set_hvac_mode',
-                service_data: { entity_id: climate.entity_id, hvac_mode: mode }
-              })
-            });
-            setTimeout(loadHaData, 600);
-          }
-        });
+      if (((homeInfo().ha || {}).token_set) === false) {        // no token stored: nothing was tried, so nothing is "offline"
+        connBadge.className = 'status-badge';
+        connBadge.textContent = 'Home Assistant: not set up';
       }
-    });
+    }
+
+    renderThermostats(haDash.climate || []);
 
     // Populate entities
     State.ha.all = [
@@ -1318,8 +1322,8 @@ export async function loadTrainerWatchdogData() {
       <div class="harness-container">
         <div class="harness-card-title">
           <span>🎯 PVE HARDWARE WATCHDOG &amp; VRAM TRAINING PIPELINE</span>
-          <span class="status-badge ${watchdogRes.armed !== false ? 'online' : 'offline'}">
-            ${watchdogRes.armed !== false ? '🟢 WATCHDOG ARMED' : '🔴 DISARMED'}
+          <span class="status-badge ${watchdogRes.armed === true ? 'online' : (watchdogRes.armed === false ? 'offline' : '')}">
+            ${watchdogRes.armed === true ? '🟢 WATCHDOG ARMED' : (watchdogRes.armed === false ? '🔴 DISARMED' : 'WATCHDOG STATE UNKNOWN')}
           </span>
         </div>
 

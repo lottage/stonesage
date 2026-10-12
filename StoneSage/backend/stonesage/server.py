@@ -1196,6 +1196,8 @@ def load_dynamic_amem_cards(query: str = "", category: str = "") -> Dict[str, An
     valkey_online = False
     
     try:
+        if not endpoints.configured("valkey", config):   # not named in config: no probe, no warning on every call
+            raise LookupError("valkey not configured")
         s = socket.socket()
         s.settimeout(3.0)
         s.connect((endpoints.host("valkey", config), endpoints.port("valkey", config)))
@@ -1234,6 +1236,8 @@ def load_dynamic_amem_cards(query: str = "", category: str = "") -> Dict[str, An
                         except Exception:
                             pass
         s.close()
+    except LookupError:
+        valkey_online = False
     except Exception as ex:
         valkey_online = False
         logger.warning("Valkey socket query failed: %s", ex)
@@ -8282,6 +8286,8 @@ agent_hub = AgentHub(_stonesage_data_dir, _agent_services(),
                      computer=get_courage_agent if _courage_agent_if_any() else None,
                      computer_built=lambda: _courage_agent)
 agent_api.install(app_ctx, agent_hub)
+from stonesage import ui_features  # noqa: E402
+ui_features.install(app_ctx, APP_VERSION, _stonesage_data_dir, boost_router=_boost_router)   # GET /api/ui/features: what the page may show
 
 PTY_PORT = 8088
 

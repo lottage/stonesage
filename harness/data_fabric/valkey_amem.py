@@ -22,6 +22,7 @@ except ImportError:
     redis = None
 
 logger = logging.getLogger("Harness.AMEM")
+_unconfigured_logged = False
 
 STOPWORDS = {
     "a", "an", "the", "is", "are", "was", "were", "what", "which", "who",
@@ -67,6 +68,13 @@ class ValkeyAMEM:
         self.seed_homelab_core_cards()
 
     def _connect(self):
+        if not fleet_config.valkey_configured:
+            # A fresh install that never named Valkey: no connection attempt, no warning (said once, at info)
+            global _unconfigured_logged
+            if not _unconfigured_logged:
+                _unconfigured_logged = True
+                logger.info("Valkey not configured; A-MEM uses its in-memory store.")
+            return
         if redis is None:
             logger.warning("redis-py not installed; using in-memory fallback store.")
             return

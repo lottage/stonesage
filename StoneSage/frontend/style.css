@@ -2906,3 +2906,7 @@ html, body {
   border: 2px solid var(--term-accent-gold); border-radius: 2px;
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6);   /* stays visible on light backgrounds */
 }
+
+/* The page starts bare: parts that exist only on some installs carry `hidden` and are shown by js/features.js. A class that
+   sets `display` would otherwise win over the browser's own [hidden] rule. */
+[hidden] { display: none !important; }

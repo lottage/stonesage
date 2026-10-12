@@ -89,9 +89,10 @@ export function initEngineConsole() {
   const addNodeBtn = document.getElementById('econsole-add-node');
   if (addNodeBtn) addNodeBtn.addEventListener('click', addDynamicNode);
 
-  // Initial poll
+  // Initial poll, then one every 3 s while the Engine tab is the one in front (nothing is fetched for a hidden tab)
   pollAllEngines();
-  pollTimer = setInterval(pollAllEngines, 3000);
+  pollTimer = setInterval(() => { if (!document.hidden && State.activeTab === 'engine') pollAllEngines(); }, 3000);
+  window.addEventListener('stonesage:tab-switched', (e) => { if (e.detail.tab === 'engine') pollAllEngines(); });
 
   console.log('⚡ [EngineConsole] Engine Console ready.');
 }
@@ -164,7 +165,13 @@ function selectEngine(key) {
 }
 
 // ─── Dashboard Polling ───────────────────────────────────────────────────
-async function pollAllEngines() {
+let polling = null;
+function pollAllEngines() {
+  if (!polling) polling = pollEnginesOnce().finally(() => { polling = null; });     // one poll at a time: callers share it
+  return polling;
+}
+
+async function pollEnginesOnce() {
   if (!dynamicNodes.loaded) { await loadDynamicNodes(); dynamicNodes.loaded = true; }
   // Fetch fixed engines
   const fixedPromise = fetch('/api/engine/state/all')

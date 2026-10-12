@@ -31,19 +31,36 @@ apps run is a list in `config.json` (`"apps"`), so the same platform runs with H
 
 ## Install with Docker
 
-`docker build -t ghcr.io/lottage/stonesage:latest .` builds the platform and cockpit image (non-root, state in the
-`/config` and `/data` volumes; Lodestone is installed from GitHub, `--build-arg LODESTONE_PIP=...` points elsewhere). The
-easiest whole stack is the Compose file that Lodestone's installer writes (`python -m lodestone.installer --docker`):
-models, a gateway, and StoneSage with the [Hearth](https://github.com/lottage/hearth) app. Docker runs the CPU profile on
-Linux, Windows and macOS; NVIDIA GPUs on Linux and Windows (WSL2); AMD and Intel GPUs on Linux only.
+`docker build -t ghcr.io/lottage/stonesage:0.1.0-rc.2 .` builds the platform and cockpit image (non-root, state in the
+`/config` and `/data` volumes; Lodestone is installed from GitHub at the same release, v0.1.0-rc.2; `--build-arg
+LODESTONE_PIP=...` points elsewhere). The easiest whole stack is the Compose file that Lodestone's installer writes
+(`python -m lodestone.installer --docker`, then `docker compose up -d --build`; the steps and prerequisites are in the
+[Hearth README](https://github.com/lottage/hearth)): models, a gateway, and StoneSage with the Hearth app. Docker runs the
+CPU profile on Linux, Windows and macOS; NVIDIA GPUs on Linux and Windows (WSL2); AMD and Intel GPUs on Linux only. Docker
+needs Buildx and Compose 2.20 or newer (Ubuntu's `docker.io` alone has no Buildx).
 
 ## Install without Docker
 
-StoneSage depends on [Lodestone](https://github.com/lottage/lodestone) (not on PyPI); pip fetches it from GitHub as part
-of the install:
+### What you need first
+
+A clean machine needs these once, before the commands below.
+
+**Python 3.10 or newer with `venv`, and git.** pip fetches the layers from GitHub, so even a pip install needs git. Modern
+Linux (Ubuntu 24.04 among them) refuses `pip install` outside a virtual environment, so make one:
+
+- Ubuntu / Debian: `sudo apt install git python3-venv python3-pip`, then
+  `python3 -m venv ~/stonesage && . ~/stonesage/bin/activate`
+- Windows (PowerShell): install Python 3.10+ and Git for Windows, then
+  `py -m venv $HOME\stonesage; & $HOME\stonesage\Scripts\Activate.ps1`
+  (if PowerShell refuses the script: `Set-ExecutionPolicy -Scope Process RemoteSigned`, then repeat)
+- macOS: `brew install python git` (or the python.org installer), then
+  `python3 -m venv ~/stonesage && . ~/stonesage/bin/activate`
+
+StoneSage depends on [Lodestone](https://github.com/lottage/lodestone) (not on PyPI); pip fetches it from GitHub, at the
+same release, as part of the install:
 
 ```
-git clone https://github.com/lottage/stonesage
+git clone --branch v0.1.0-rc.2 https://github.com/lottage/stonesage
 cd stonesage
 pip install -e .
 ```
