@@ -1,14 +1,17 @@
 """Backups of this install: what a person would miss if the machine died, in one archive, and the way back.
 (docs/LAYERS.md, "M5: Backups, upgrades and the rest of the review")
 
-    python -m stonesage.backup create [--out DIR]
+    python -m stonesage.backup create [--out DIR] [--no-push]
+    python -m stonesage.backup push [--dest NAME] [FILE]
     python -m stonesage.backup list [--dir DIR]
     python -m stonesage.backup restore FILE [--yes] [--dry-run]
 
 The server also takes one every day (config `backup`: `enabled` true, `dir` = <data dir>/backups, `keep` 14, `hour` 3 local time),
 and one before it migrates an old config (config_migrate.py). `GET /api/backup/status` and `POST /api/backup/run` (behind the
 login) show and trigger it. There is deliberately NO download route: the archive holds `config.json`, i.e. the login key and every
-token. Copying it off the machine (another disk, another host) is the operator's job; docs/UPGRADING.md says how.
+token. Copying it off the machine (another disk, another host) is the operator's job; docs/UPGRADING.md says how, and config
+`backup.destinations` can do it after every backup: a mounted folder (NAS, USB disk, a synced cloud folder) or an rclone remote
+(backup_dest.py). With none configured nothing of that runs.
 
 What goes in is the list RULES below: first match wins, every entry has a reason. Anything in the data folder that no rule names is
 included up to 5 MB a file (a state file somebody added later is not forgotten); bigger unnamed files are skipped and listed in the
@@ -44,13 +47,13 @@ from datetime import datetime, time as dtime, timedelta, timezone
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
 
 import stonesage
-from stonesage import archive, auth, config_migrate, paths, soul
+from stonesage import archive, auth, backup_dest, config_migrate, paths, soul
 
 logger = logging.getLogger("StoneSage.backup")
 
 FORMAT_VERSION = 1                      # the archive layout (manifest "format"); a restore refuses a higher number
 KIND = "stonesage-backup"
-NAME_PREFIX, NAME_SUFFIX = "stonesage-backup-", ".tar.gz"
+NAME_PREFIX, NAME_SUFFIX = backup_dest.NAME_PREFIX, backup_dest.NAME_SUFFIX
 DEFAULT_MAX_FILE = 5 * 1024 * 1024      # per file, for anything no rule names
 MAX_TOTAL_BYTES = 1024 * 1024 * 1024    # all files of one backup
 MAX_FILES = 20000
@@ -308,6 +311,7 @@ class BackupResult:
     skipped: List[Dict[str, str]] = field(default_factory=list)
     errors: List[str] = field(default_factory=list)
     created: float = 0.0
+    pushes: List[Dict[str, Any]] = field(default_factory=list)      # one row per off-box destination tried (empty when none)
 
 
 def _stamp(now: float) -> str:
@@ -323,9 +327,11 @@ def _private_dir(path: str) -> None:
 
 
 def create(loc: Locations, config: Optional[Dict[str, Any]] = None, out_dir: Optional[str] = None, keep: Optional[int] = None,
-           now: Optional[float] = None, reason: str = "manual") -> BackupResult:
+           now: Optional[float] = None, reason: str = "manual", push: Any = False) -> BackupResult:
     """Write one backup archive. Returns where it went; raises OSError when it could not be written at all.
-    A single unreadable file is a recorded error in the result, not a failed backup."""
+    A single unreadable file is a recorded error in the result, not a failed backup. `push` copies it to the configured off-box
+    destinations afterwards (True = now, in this thread; "background" = in a thread of its own, for callers that must not wait);
+    a destination's failure is recorded in the result and never raises."""
     now = time.time() if now is None else now
     config = config if config is not None else _read_json(loc.config_file)
     out = os.path.abspath(out_dir or backup_dir_for(loc, config))
@@ -410,7 +416,30 @@ def create(loc: Locations, config: Optional[Dict[str, Any]] = None, out_dir: Opt
                 f", {len(skipped)} skipped" if skipped else "")
     for s in skipped:
         logger.info("backup skipped %s: %s", s["path"], s["reason"])
-    return BackupResult(final, size, len(entries), skipped, errors, now)
+    result = BackupResult(final, size, len(entries), skipped, errors, now)
+    if push and backup_dest.has_work(config):
+        if push == "background":
+            threading.Thread(target=_push_quietly, args=(final, loc, config), daemon=True, name="backup-push").start()
+        else:
+            result.pushes = _push_quietly(final, loc, config)
+    return result
+
+
+def push_to_destinations(archive_path: str, loc: Locations, config: Optional[Dict[str, Any]], only: str = "",
+                         runner: Optional[backup_dest.Runner] = None, which: Optional[Callable[[str], Optional[str]]] = None,
+                         clock: Callable[[], float] = time.time) -> List[Dict[str, Any]]:
+    """Copy one existing archive to the off-box destinations (all enabled ones, or just `only`). Each row says ok or why not;
+    ValueError when `only` is unknown or the file is not named like a backup."""
+    state = os.path.join(backup_dir_for(loc, config), backup_dest.STATE_NAME)
+    return backup_dest.Pusher(state, runner, which, clock).push(archive_path, config, only)
+
+
+def _push_quietly(archive_path: str, loc: Locations, config: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    try:
+        return push_to_destinations(archive_path, loc, config)
+    except Exception as e:                       # the local backup is made and stays; this is only the extra copy
+        logger.error("backup copy to the off-box destinations failed: %s: %s", type(e).__name__, e)
+        return [{"name": "(all)", "ok": False, "error": f"{type(e).__name__}: {e}"}]
 
 
 def _safe_mtime(path: str) -> float:
@@ -682,8 +711,10 @@ class BackupService:
     CATCH_UP_DELAY_S = 300           # after a start, a missed backup is made 5 minutes in, not during boot
 
     def __init__(self, loc: Locations, config_fn: Callable[[], Dict[str, Any]], clock: Callable[[], float] = time.time,
-                 tz_fn: Optional[Callable[[], Any]] = None):
+                 tz_fn: Optional[Callable[[], Any]] = None, dest_runner: Optional[backup_dest.Runner] = None,
+                 dest_which: Optional[Callable[[str], Optional[str]]] = None):
         self.loc, self.config_fn, self.clock = loc, config_fn, clock
+        self._dest_runner, self._dest_which = dest_runner, dest_which      # test seams: a fake rclone
         self._tz_fn = tz_fn
         self._lock = threading.Lock()
         self._stop = threading.Event()
@@ -718,8 +749,17 @@ class BackupService:
             target = datetime.combine(tomorrow, dtime(s["hour"], 0), tzinfo=tz)
         return target.timestamp()
 
-    def run_now(self, reason: str = "manual") -> Dict[str, Any]:
-        """Take a backup now. Never raises: the result says ok or why not (the status shows the last error)."""
+    def _push(self, path: str, cfg: Dict[str, Any]) -> List[Dict[str, Any]]:
+        try:
+            return push_to_destinations(path, self.loc, cfg, runner=self._dest_runner, which=self._dest_which, clock=self.clock)
+        except Exception as e:
+            logger.error("backup copy to the off-box destinations failed: %s: %s", type(e).__name__, e)
+            return [{"name": "(all)", "ok": False, "error": f"{type(e).__name__}: {e}"}]
+
+    def run_now(self, reason: str = "manual", background_push: bool = False) -> Dict[str, Any]:
+        """Take a backup now, then copy it to the off-box destinations if there are any (in this thread, or with
+        `background_push` in one of its own so a request does not wait). Never raises: the result says ok or why not (the status
+        shows the last error); a destination that fails never makes the backup fail."""
         if not self._lock.acquire(blocking=False):
             return {"ok": False, "error": "a backup is already running"}
         try:
@@ -732,8 +772,16 @@ class BackupService:
                 return {"ok": False, "error": self.last_error}
             self.last_result = res
             self.last_error = "; ".join(res.errors[:5]) if res.errors else ""
-            return {"ok": True, "file": os.path.basename(res.path), "size": res.size, "files": res.files,
-                    "skipped": len(res.skipped), "errors": res.errors}
+            out = {"ok": True, "file": os.path.basename(res.path), "size": res.size, "files": res.files,
+                   "skipped": len(res.skipped), "errors": res.errors}
+            cfg = self.config_fn()
+            if backup_dest.has_work(cfg):
+                if background_push:
+                    threading.Thread(target=self._push, args=(res.path, cfg), daemon=True, name="backup-push").start()
+                    out["pushing"] = True
+                else:
+                    out["destinations"] = self._push(res.path, cfg)
+            return out
         finally:
             self._lock.release()
 
@@ -754,7 +802,8 @@ class BackupService:
         return {"ok": True, "enabled": s["enabled"], "dir": self.folder(), "keep": s["keep"], "hour": s["hour"],
                 "count": len(found), "last": last or None, "last_error": self.last_error or None,
                 "last_attempt": self.last_attempt or None, "next_run": round(nxt, 3) if nxt else None,
-                "running": self._lock.locked(),
+                "running": self._lock.locked(), "pushing": backup_dest.is_pushing(),
+                "destinations": backup_dest.Pusher(os.path.join(self.folder(), backup_dest.STATE_NAME)).status(self.config_fn()),
                 "note": "Backups hold config.json (the login key and every token). Copy them off this machine yourself; there is no download."}
 
     # -- the thread
@@ -897,7 +946,7 @@ def merge_folders(loc: Locations, config: Optional[Dict[str, Any]] = None, prefe
     is_up = running if running is not None else (lambda: server_running(config))
     if is_up():
         raise RestoreError("the StoneSage server is running: stop it first (harness.db is open while it runs)")
-    rep.backup = create(loc, config, reason="before-merge").path
+    rep.backup = create(loc, config, reason="before-merge", push=True).path
     stamp = time.strftime("%Y%m%d-%H%M%S", time.localtime(time.time() if now is None else now))
     for rel in rep.copied:
         _copy_into(os.path.join(loc.harness_dir, *rel.split("/")), paths.safe_join(loc.data_dir, rel))
@@ -913,6 +962,14 @@ def merge_folders(loc: Locations, config: Optional[Dict[str, Any]] = None, prefe
     logger.info("data folders merged into %s (%d copied, %d identical, %d duplicates settled); the old folder is now %s",
                 loc.data_dir, len(rep.copied), len(rep.identical), len(rep.duplicates), rep.old_folder_now)
     return rep
+
+
+def _print_pushes(rows: List[Dict[str, Any]]) -> None:
+    for r in rows:
+        if r["ok"]:
+            print(f"  copied to '{r['name']}'" + (f" ({r['warning']})" if r.get("warning") else ""))
+        else:
+            print(f"  NOT copied to '{r['name']}': {r['error']}")
 
 
 def _ask_in_terminal(d: Duplicate) -> str:
@@ -936,6 +993,10 @@ def main(argv: Optional[List[str]] = None) -> int:
     sub = ap.add_subparsers(dest="cmd", required=True)
     c = sub.add_parser("create", help="write a backup now")
     c.add_argument("--out", default=None, help="folder for the archive (default: config backup.dir, else <data dir>/backups)")
+    c.add_argument("--no-push", action="store_true", help="do not copy it to the off-box destinations (config backup.destinations)")
+    pu = sub.add_parser("push", help="copy an existing backup to the off-box destinations (retry; default: the newest backup)")
+    pu.add_argument("file", nargs="?", default=None)
+    pu.add_argument("--dest", default="", help="only this destination (its name in config backup.destinations)")
     ls = sub.add_parser("list", help="list the backups in the folder")
     ls.add_argument("--dir", default=None)
     r = sub.add_parser("restore", help="put a backup back (every replaced file is moved aside first)")
@@ -954,14 +1015,31 @@ def main(argv: Optional[List[str]] = None) -> int:
     config = _read_json(loc.config_file)
     try:
         if args.cmd == "create":
-            res = create(loc, config, out_dir=args.out)
+            res = create(loc, config, out_dir=args.out, push=not args.no_push)
             print(f"wrote {res.path} ({res.files} files, {res.size // 1024} KB)")
             print("This archive contains config.json: the login key and every token. Keep it private and copy it off this machine.")
             for s in res.skipped:
                 print(f"  skipped {s['path']}: {s['reason']}")
             for e in res.errors:
                 print(f"  error {e}")
-            return 1 if res.errors else 0
+            _print_pushes(res.pushes)
+            return 1 if res.errors or any(not p["ok"] for p in res.pushes) else 0
+        if args.cmd == "push":
+            target = args.file
+            if not target:
+                found = list_backups(backup_dir_for(loc, config))
+                if not found:
+                    raise ValueError(f"no backups in {backup_dir_for(loc, config)}; pass the file to copy")
+                target = found[-1]
+            if not os.path.isfile(target):
+                raise ValueError(f"{target} is not a file")
+            read_manifest(target)                                    # ValueError unless it really is a StoneSage backup
+            if not backup_dest.load_destinations(config):
+                raise ValueError("no destinations are configured (config backup.destinations)")
+            rows = push_to_destinations(target, loc, config, only=args.dest)
+            print(f"copying {os.path.basename(target)}")
+            _print_pushes(rows)
+            return 0 if rows and all(r["ok"] for r in rows) else 1
         if args.cmd == "list":
             folder = args.dir or backup_dir_for(loc, config)
             found = list_backups(folder)

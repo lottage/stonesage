@@ -24,7 +24,7 @@ sys.path.insert(0, os.path.join(ROOT, "tests"))
 import lodestone  # noqa: E402
 import stonesage  # noqa: E402
 from lodestone import compat  # noqa: E402
-from stonesage import backup, config_migrate as cm  # noqa: E402
+from stonesage import backup, backup_dest, config_migrate as cm  # noqa: E402
 
 # Hearth is another layer (and another repository once the layers are split): found by name, absent = its checks are skipped
 hearth = importlib.import_module("hearth") if importlib.util.find_spec("hearth") else None
@@ -327,7 +327,11 @@ class TestFirstRunAndExample(unittest.TestCase):
             example = json.load(f)
         cm.check_not_newer(example)
         self.assertEqual(example["features"]["shelved"], False)
-        self.assertEqual(example["backup"], {"enabled": True, "keep": 14, "hour": 3})
+        self.assertEqual({k: v for k, v in example["backup"].items() if not k.startswith("_")},
+                         {"enabled": True, "keep": 14, "hour": 3, "destinations": []})
+        samples = [dict(e, path=os.path.abspath("nas")) if e.get("type") == "folder" else e for e in example["backup"]["_destinations_example"]]
+        shipped = backup_dest.load_destinations({"backup": {"destinations": samples}})      # (a /mnt path is absolute only on POSIX)
+        self.assertEqual([(d.type, d.error) for d in shipped], [("folder", ""), ("rclone", "")], "the shipped examples must be valid")
 
 
 class TestVersions(unittest.TestCase):

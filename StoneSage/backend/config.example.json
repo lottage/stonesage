@@ -44,6 +44,20 @@
   "backup": {
     "enabled": true,
     "keep": 14,
-    "hour": 3
+    "hour": 3,
+    "destinations": [],
+    "_destinations_example": [
+      {
+        "name": "nas",
+        "type": "folder",
+        "path": "/mnt/nas/stonesage-backups",
+        "keep": 30
+      },
+      {
+        "name": "cloud",
+        "type": "rclone",
+        "remote": "my-crypt-drive:StoneSage"
+      }
+    ]
   }
 }

@@ -217,7 +217,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     if not args.no_backup and not args.dry_run:
         from stonesage import backup as backup_mod
         loc = backup_mod.Locations.default(path)
-        backup = lambda: backup_mod.create(loc, backup_mod._read_json(path), reason="before settings upgrade")
+        backup = lambda: backup_mod.create(loc, backup_mod._read_json(path), reason="before settings upgrade", push=True)
     try:
         report = upgrade_file(path, backup=backup, dry_run=args.dry_run)
     except (ConfigTooNew, ConfigError) as e:

@@ -1680,7 +1680,7 @@ def _upgrade_settings_at_start() -> None:
     try:
         loc = backup_mod.Locations.default(CONFIG_FILE)          # data folder: STONESAGE_DATA_DIR, else StoneSage/data
         report = config_migrate.upgrade_file(
-            CONFIG_FILE, backup=lambda: backup_mod.create(loc, backup_mod._read_json(CONFIG_FILE), reason="before settings upgrade"))
+            CONFIG_FILE, backup=lambda: backup_mod.create(loc, backup_mod._read_json(CONFIG_FILE), reason="before settings upgrade", push="background"))
     except config_migrate.ConfigTooNew as e:
         print(f"\n[!] {e}", file=sys.stderr)
         sys.exit(1)
@@ -6997,7 +6997,7 @@ class StoneSageHandler(http.server.SimpleHTTPRequestHandler):
 
 
             elif path == "/api/backup/run":
-                res = get_backup_service().run_now("requested through the API")
+                res = get_backup_service().run_now("requested through the API", background_push=True)
                 self.send_json(res, 200 if res.get("ok") else 500)
                 return
 

@@ -86,6 +86,7 @@
  "/api/backup/status": {
   "keys": [
    "count",
+   "destinations",
    "dir",
    "enabled",
    "hour",
@@ -96,6 +97,7 @@
    "next_run",
    "note",
    "ok",
+   "pushing",
    "running"
   ],
   "status": 200,
