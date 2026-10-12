@@ -25,6 +25,7 @@ if BACKEND_DIR not in sys.path:
     sys.path.insert(0, BACKEND_DIR)
 
 from lodestone import endpoints  # noqa: E402
+from stonesage import config_migrate  # noqa: E402
 
 CONFIG_FILE = os.environ.get("STONESAGE_CONFIG_FILE") or os.path.join(BACKEND_DIR, "config.json")
 
@@ -84,6 +85,8 @@ def build_config(answers: Dict[str, Any], existing: Optional[Dict[str, Any]] = N
     """existing + answers (parsed, empty answers dropped); the household's owner pronouns follow the operator's when the
     operator is the household's first person and none were given. Pure: no files, no prompts."""
     cfg = json.loads(json.dumps(existing or {}))
+    if not existing:
+        cfg["config_version"] = config_migrate.LATEST       # a new file is born current; an old one keeps its number and is upgraded at start
     parse = {k: p for k, _, _, p, _ in QUESTIONS}
     for key, raw in answers.items():
         value = parse[key](raw) if key in parse and isinstance(raw, str) else raw

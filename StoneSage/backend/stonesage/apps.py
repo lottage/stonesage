@@ -13,7 +13,11 @@ INSTALLED_APPS, so the same platform runs with Home, with another app, or with n
 
 import importlib
 import logging
+import sys
 from typing import Any, Callable, Dict, List, Optional, Tuple
+
+from lodestone import compat
+from stonesage import API_VERSION
 
 logger = logging.getLogger("StoneSage.apps")
 
@@ -133,6 +137,10 @@ def load_apps(names: List[str], ctx: AppContext) -> List[str]:
             continue
         ctx._current = name
         try:
+            wanted = getattr(importlib.import_module(name), "STONESAGE_API", None)     # the API the app was written for
+            if wanted is not None:
+                compat.require(f"app {name}", str(getattr(sys.modules[name], "__version__", "?")), "StoneSage",
+                               API_VERSION, str(wanted))
             module = importlib.import_module(f"{name}.app")
             module.install(ctx)
             loaded.append(name)

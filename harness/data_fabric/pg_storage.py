@@ -11,15 +11,14 @@ import sqlite3
 import logging
 from typing import Dict, Any, List, Optional
 from ..config import fleet_config
+from ..core import datadir
 from ..legacy_names import LEGACY_AGENT_IDS, LEGACY_AGENT_NAMES, LEGACY_TABLES, canonical_agent_id
 
 logger = logging.getLogger("Harness.PGStorage")
 
 class RelationalStorage:
     def __init__(self, db_path: Optional[str] = None):
-        self.db_path = db_path or os.path.abspath(
-            os.path.join(os.path.dirname(__file__), "..", "..", "data", "harness.db")
-        )
+        self.db_path = db_path or datadir.resolve("harness.db")
         os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
         self.conn = None
         self._init_sqlite()

@@ -184,6 +184,7 @@ class TestVaultTraversal(unittest.TestCase):
             status, _, payload = call("GET", "/api/obsidian/note?path=inside.md")
             self.assertIn(b"inside text", payload)
 
+    @mock.patch.dict(server.config, {"features": {"shelved": True}})        # a shelved route: the flag must be on for the id check to be reached
     def test_a_dossier_id_is_a_name_not_a_path(self):
         for bad in ("../../etc/passwd", "..\\x", "a/b", "x..y", "", ".hidden"):
             status, _, _ = call("GET", "/api/hivemind/dossier/content?id=" + bad.replace("\\", "%5C"))
@@ -403,6 +404,24 @@ class TestUrlsTheServerFetches(unittest.TestCase):
     def test_a_private_range_can_be_refused_when_asked(self):
         with self.assertRaises(ValueError):
             urlcheck.check_fetch_url("http://10.0.0.5/", allow_private=False, resolve=False)
+
+    def test_the_edge_reload_download_url_is_checked_before_any_node_is_told_to_fetch_it(self):
+        """The review's edge/reload note: the URL the edge nodes are told to pull goes through the same check."""
+        from harness.edge_fleet.ota_reload import ota_distributor
+        with mock.patch.object(ota_distributor, "notify_edge_nodes_new_model", return_value={"node-1": "queued"}) as notify, \
+                mock.patch.object(server, "forward_to_active_harness", return_value=None):
+            for bad in ("file:///etc/passwd", "http://127.0.0.1:9000/m.gguf", "http://169.254.169.254/latest", "ftp://example.invalid/m.gguf",
+                        "http://localhost/m.gguf", "javascript:alert(1)", "http://x/\r\nHost: y"):
+                status, _, payload = call("POST", "/api/harness/edge/reload", {"model_name": "m", "download_url": bad, "checksum": "ab"})
+                self.assertEqual(status, 400, bad)
+                self.assertIn("download_url refused", json.loads(payload)["error"])
+            notify.assert_not_called()
+            ok = "https://example.invalid/models/m.gguf"
+            status, _, payload = call("POST", "/api/harness/edge/reload", {"model_name": "m", "download_url": ok, "checksum": "ab"})
+            self.assertEqual(status, 200)
+            self.assertEqual(notify.call_args.kwargs["gguf_artifact_url"], ok)
+            status, _, _ = call("POST", "/api/harness/edge/reload", {"model_name": "m"})          # no URL at all: as before
+            self.assertEqual(status, 200)
 
 
 class TestUploads(unittest.TestCase):

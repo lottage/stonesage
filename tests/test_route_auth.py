@@ -348,6 +348,69 @@ class TestHostNames(Fresh):
         self.assertEqual(call("OPTIONS", "/api/config", headers={"Host": "evil.example"}, auth=False)[0], 421)
 
 
+class TestShelvedRoutes(Fresh):
+    """L4 of the security review: the shelved parts (Assembly Hall, the thinking loop, reproduction, Citadel 3D / Blender, trainer runs,
+    subagents, planner) stay in the code but answer 404 with a reason unless config features.shelved is true."""
+
+    def shelved_routes(self):
+        exact, prefixes = platform_routes()
+        found = sorted((m, p) for m, p in exact if auth.is_shelved(p))
+        found += sorted((m, p + "x") for m, p in prefixes if auth.is_shelved(p))
+        return found
+
+    def test_the_reader_finds_the_shelved_routes_and_each_family(self):
+        routes = self.shelved_routes()
+        self.assertGreaterEqual(len(routes), 45, "the AST reader went blind, or routes were removed (then lower this on purpose)")
+        for family in ("/api/trainer/", "/api/hivemind/", "/api/agent/", "/api/3d/", "/api/dataset/", "/api/subagents/", "/api/planner/"):
+            self.assertTrue(any(p.startswith(family) for _m, p in routes), family)
+
+    def test_the_prefixes_catch_only_shelved_things(self):
+        for path in ("/api/agent_dna/list", "/api/agents", "/api/agent", "/api/workspaces/agent/update", "/api/garden/status",
+                     "/api/chat", "/api/cluster/chat", "/api/souls", "/v1/models", "/api/backup/status"):
+            self.assertFalse(auth.is_shelved(path), path)
+        for path in ("/api/agent/reproduce", "/api/hivemind/toggle", "/api/3d/render", "/api/trainer/train", "/api/dataset/compile",
+                     "/api/subagents/dispatch", "/api/planner/generate"):
+            self.assertTrue(auth.is_shelved(path), path)
+
+    def test_every_shelved_route_is_404_with_a_reason_while_the_flag_is_off(self):
+        self.assertIn("shelved", auth.FEATURE_NAMES)
+        for method, path in self.shelved_routes():
+            with self.subTest(route=f"{method} {path}"):
+                status, _, payload = call(method, path, {} if method == "POST" else None)
+                self.assertEqual(status, 404)
+                data = json.loads(payload)
+                first = "code_tools" if path == "/api/3d/execute" else "shelved"      # that one also runs client code: its own flag asks first
+                self.assertEqual((data["ok"], data["feature"]), (False, first))
+                self.assertIn("features." + first, data["error"])
+                self.assertEqual(call(method, path, {} if method == "POST" else None, auth=False)[0], 401, "still behind the login")
+
+    def test_only_a_literal_true_turns_them_on(self):
+        for value in (False, None, 0, "", "true", "yes", 1, [], {}):
+            with mock.patch.dict(server.config, {"features": {"shelved": value}}):
+                self.assertEqual(call("GET", "/api/trainer/status")[0], 404, repr(value))
+
+    def test_the_flag_is_independent_of_the_other_four(self):
+        with mock.patch.dict(server.config, {"features": {"web_terminal": True, "code_tools": True, "file_editor": True,
+                                                         "raw_ha_call": True}}):
+            self.assertEqual(call("GET", "/api/trainer/status")[0], 404)
+            status, _, payload = call("POST", "/api/3d/execute", {})
+            self.assertEqual((status, json.loads(payload)["feature"]), (404, "shelved"))
+        with mock.patch.dict(server.config, {"features": {"shelved": True}}):
+            self.assertEqual(call("POST", "/api/terminal/exec", {"command": "ls"})[0], 404)        # the shelved flag grants nothing else
+            self.assertEqual(json.loads(call("POST", "/api/3d/execute", {})[2]).get("feature"), "code_tools")
+
+    def test_with_the_flag_on_the_route_is_reached_unchanged(self):
+        with mock.patch.dict(server.config, {"features": {"shelved": True}}):
+            for path in ("/api/trainer/status", "/api/subagents/list", "/api/hivemind/status"):
+                status, _, payload = call("GET", path)
+                self.assertNotEqual(json.loads(payload).get("feature"), "shelved", path)
+
+    def test_live_routes_are_not_caught(self):
+        for path in ("/api/agent_dna/list", "/api/garden/status", "/api/provenance", "/api/souls", "/api/backup/status"):
+            status, _, payload = call("GET", path)
+            self.assertNotEqual(json.loads(payload).get("feature"), "shelved", path)
+
+
 class TestFeatureFlags(Fresh):
     ROUTES = {"web_terminal": [("POST", "/api/terminal/exec", {"command": "ls"})],
               "code_tools": [("POST", "/api/harness/tools/register", {"name": "x", "description": "y", "python_code": "x=1"}),
@@ -584,6 +647,8 @@ class TestTheKey(unittest.TestCase):
             auth.ensure_key(cfg, path)
             saved = json.load(open(path))
             self.assertEqual((saved["server"]["port"], saved["apps"]), (9, ["hearth"]))
+            from stonesage import config_migrate
+            self.assertEqual(saved["config_version"], config_migrate.LATEST, "a file born now is current, not migrated at the next start")
 
     def test_show_key_prints_the_key_and_says_where_it_came_from(self):
         import io

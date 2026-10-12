@@ -60,14 +60,17 @@ except ImportError:
 
 # Safety rules: imported plainly, never with a permissive fallback (a missing module must stop the server, not open it up)
 from stonesage.command_whitelist import validate_terminal_command, run_command
+import stonesage
 from stonesage import auth
 from stonesage import paths
+from stonesage import backup as backup_mod
+from stonesage import config_migrate
 MODEL_FILE_RE = r"[A-Za-z0-9][A-Za-z0-9._-]{0,200}\.gguf"        # a model file name on the engine host: nothing a shell could read
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 UPLOAD_INLINE_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".webp"}          # shown in the page; everything else downloads
 UPLOAD_ALLOWED_EXTS = UPLOAD_INLINE_EXTS | {".txt", ".md", ".json", ".csv", ".pdf", ".wav", ".mp3", ".webm", ".ogg", ".m4a", ".bin"}
 MAX_BODY_BYTES = 64 * 1024 * 1024    # the largest thing a client may send (a soul archive is capped at 60 MB in agent_api.py)
-APP_VERSION = "0.1.0"        # shown by the public /api/health; nothing else about this install is
+APP_VERSION = stonesage.__version__        # shown by the public /api/health; nothing else about this install is
 try:
     from lodestone.model_downloader import model_download_manager, normalize_download_url
 except ImportError:
@@ -624,6 +627,7 @@ from stonesage.trainer_client import TrainerClient
 from stonesage import health as service_health
 from lodestone import system_profile
 from lodestone import endpoints
+from lodestone import tls
 from lodestone import model_loader
 from lodestone import engine_profiles
 
@@ -750,7 +754,8 @@ def get_active_harness_instance() -> Dict[str, Any]:
             return inst
     return instances[0] if instances else DEFAULT_HARNESS_INSTANCES[0]
 
-def ping_harness_instance(inst_url: str, timeout: float = 0.5) -> Dict[str, Any]:
+def ping_harness_instance(inst_url: str, timeout: float = 0.5, tls_section: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Is the node answering? An https node's certificate is checked (lodestone/tls.py): `ca_file` / `verify_tls` on the node's entry."""
     t0 = time.time()
     url = inst_url.rstrip("/")
     parsed_u = urllib.parse.urlparse(url)
@@ -766,10 +771,8 @@ def ping_harness_instance(inst_url: str, timeout: float = 0.5) -> Dict[str, Any]
         return {"is_online": False, "ping_ms": None, "error": str(e)}
 
     probe_url = f"{url}/api/v1/models" if port == 1234 else (f"{url}/health" if port in (8001, 8002, 8003, 8004) else url)
-    ssl_ctx = ssl.create_default_context()
-    ssl_ctx.check_hostname = False
-    ssl_ctx.verify_mode = ssl.CERT_NONE
     try:
+        ssl_ctx = tls.context(tls_section, name=f"node {host}")
         req = urllib.request.Request(probe_url, headers={"User-Agent": "StoneSage-Probe"}, method="GET")
         with urllib.request.urlopen(req, timeout=timeout, context=ssl_ctx) as resp:
             elapsed_ms = round((time.time() - t0) * 1000, 1)
@@ -779,7 +782,7 @@ def ping_harness_instance(inst_url: str, timeout: float = 0.5) -> Dict[str, Any]
         if getattr(e, 'code', None) in (401, 403, 301, 302, 400, 404, 405, 426):
             elapsed_ms = round((time.time() - t0) * 1000, 1)
             return {"is_online": True, "ping_ms": elapsed_ms, "status_code": getattr(e, 'code', None)}
-        return {"is_online": False, "ping_ms": None, "error": str(e)}
+        return {"is_online": False, "ping_ms": None, "error": tls.explain(e, f"node {host}")}
 
 def forward_to_active_harness(path: str, method: str = "GET", query: str = "", body: Optional[Dict[str, Any]] = None, timeout: float = 8.0) -> Optional[Dict[str, Any]]:
     active = get_active_harness_instance()
@@ -1671,6 +1674,25 @@ def get_agent_stream(channel: str = "all", limit: int = 50) -> Dict[str, Any]:
     }
 
 
+def _upgrade_settings_at_start() -> None:
+    """Server start only (never on import, so tests and tools can import this module): refuse settings newer than this code, and
+    bring older ones up to date, taking a backup first (stonesage/config_migrate.py). Exits with a clear message if it must."""
+    try:
+        loc = backup_mod.Locations.default(CONFIG_FILE)          # data folder: STONESAGE_DATA_DIR, else StoneSage/data
+        report = config_migrate.upgrade_file(
+            CONFIG_FILE, backup=lambda: backup_mod.create(loc, backup_mod._read_json(CONFIG_FILE), reason="before settings upgrade"))
+    except config_migrate.ConfigTooNew as e:
+        print(f"\n[!] {e}", file=sys.stderr)
+        sys.exit(1)
+    except config_migrate.ConfigError as e:
+        logger.error("settings upgrade skipped: %s", e)
+        return
+    if report["status"] == "backup-failed":
+        logger.error("settings were NOT upgraded (see above); the server starts on the old settings")
+
+
+if __name__ == "__main__":
+    _upgrade_settings_at_start()
 config = load_config()
 BUILTIN_AGENTS = _render_agents(config)
 proxmox = ProxmoxClient(config.get("proxmox", {}))
@@ -2438,6 +2460,17 @@ def get_provenance():
                                  couch, os.path.join(_stonesage_data_dir(), "model_provenance.json"))
         model_loader.PROVENANCE = _provenance
     return _provenance
+
+
+_backup_service = None
+
+
+def get_backup_service() -> "backup_mod.BackupService":
+    """The daily backup and what the status route shows (stonesage/backup.py). Built on first use; the thread starts at server start."""
+    global _backup_service
+    if _backup_service is None:
+        _backup_service = backup_mod.BackupService(backup_mod.Locations.default(CONFIG_FILE, _stonesage_data_dir()), lambda: config)
+    return _backup_service
 
 
 _idle_gate = None
@@ -3362,7 +3395,7 @@ class StoneSageHandler(http.server.SimpleHTTPRequestHandler):
             
             # Fast parallel ping probe
             def probe_node(inst):
-                res = ping_harness_instance(inst.get("url", ""), timeout=0.4)
+                res = ping_harness_instance(inst.get("url", ""), timeout=0.4, tls_section=inst)
                 item = dict(inst)
                 parsed_u = urllib.parse.urlparse(inst.get("url", ""))
                 item["host"] = parsed_u.hostname or "127.0.0.1"
@@ -3606,6 +3639,12 @@ class StoneSageHandler(http.server.SimpleHTTPRequestHandler):
             self.send_json({"ok": True, **get_provenance().summary()})
             return
 
+        elif path == "/api/backup/status":
+            # last backup (time, size, files, errors), the next run, the settings. There is no download route: the archive holds
+            # config.json (the login key and every token); copying it off this machine is the operator's job (docs/UPGRADING.md)
+            self.send_json(get_backup_service().status())
+            return
+
         elif path == "/api/idle-gate":
             q = urllib.parse.parse_qs(parsed.query or "")
             self.send_json({"ok": True, **get_idle_gate().check(fresh=q.get("fresh", ["0"])[0] == "1")})
@@ -3707,9 +3746,7 @@ class StoneSageHandler(http.server.SimpleHTTPRequestHandler):
                 target_url = s.get("url", "")
                 start = time.perf_counter()
                 try:
-                    ctx = ssl.create_default_context()
-                    ctx.check_hostname = False
-                    ctx.verify_mode = ssl.CERT_NONE
+                    ctx = tls.context(s, name=f"service {s.get('name') or target_url}")   # ca_file / verify_tls on the entry
                     req = urllib.request.Request(target_url, headers={"Accept": "*/*", "User-Agent": "StoneSage-HealthProbe/2.0"})
                     with urllib.request.urlopen(req, timeout=1.8, context=ctx) as resp:
                         lat = round((time.perf_counter() - start) * 1000, 1)
@@ -3719,7 +3756,7 @@ class StoneSageHandler(http.server.SimpleHTTPRequestHandler):
                     # Even if 401/403/404/405, service is online!
                     if hasattr(e, "code") and e.code in [401, 403, 404, 405]:
                         return {**s, "online": True, "status_code": e.code, "latency_ms": lat}
-                    return {**s, "online": False, "error": str(e), "latency_ms": lat}
+                    return {**s, "online": False, "error": tls.explain(e, "this service"), "latency_ms": lat}
 
             with ThreadPoolExecutor(max_workers=10) as executor:
                 results = list(executor.map(check_service, services))
@@ -5503,6 +5540,13 @@ class StoneSageHandler(http.server.SimpleHTTPRequestHandler):
                     from harness.edge_fleet.ota_reload import ota_distributor
                     model_name = body.get("model_name", "")
                     artifact_url = body.get("download_url", "")
+                    if artifact_url:          # the edge nodes fetch this: http(s) only, never file://, loopback or a metadata address
+                        from lodestone.urlcheck import check_fetch_url
+                        try:
+                            check_fetch_url(artifact_url, resolve=False)
+                        except ValueError as ex:
+                            self.send_json({"ok": False, "error": f"download_url refused: {ex}"}, 400)
+                            return
                     checksum = body.get("checksum", "")
                     quant = body.get("quant", "q4_k_m")
                     res = ota_distributor.notify_edge_nodes_new_model(
@@ -6952,6 +6996,11 @@ class StoneSageHandler(http.server.SimpleHTTPRequestHandler):
                 return
 
 
+            elif path == "/api/backup/run":
+                res = get_backup_service().run_now("requested through the API")
+                self.send_json(res, 200 if res.get("ok") else 500)
+                return
+
             elif path == "/api/engine-profiles/apply":
                 try:
                     self.send_json(engine_profiles.apply_profile(body.get("name", "")))
@@ -8274,6 +8323,9 @@ if __name__ == "__main__":
     if _optional:     # not needed unless the install uses them: say so once, quietly
         logger.info("Optional services not configured (localhost default if you start one): %s", ", ".join(_optional))
 
+    for _where in tls.audit(config):     # one warning at start for every service whose certificate checking was switched off
+        logger.warning("TLS certificate checking is switched off for config.json %s (verify_tls: false). Prefer ca_file with the "
+                       "service's certificate (lodestone/tls.py).", _where)
     http.server.ThreadingHTTPServer.allow_reuse_address = True
     try:
         auth.ensure_key(config, CONFIG_FILE)     # the server never runs open: no key set = one is generated and saved (0600)
@@ -8291,6 +8343,7 @@ if __name__ == "__main__":
     if config.get("provenance"):
         get_provenance().start()  # model provenance: header scan now, hashing rescans (backend/provenance.py)
     app_ctx.start()  # whatever the loaded apps asked to start (apps.py)
+    get_backup_service().start()   # the daily backup (config backup.*; a missed one is made 5 minutes after start)
     try:
         server = http.server.ThreadingHTTPServer((host, port), StoneSageHandler)
     except OSError as e:

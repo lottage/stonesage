@@ -83,6 +83,24 @@
   "status": 200,
   "type": "application/json"
  },
+ "/api/backup/status": {
+  "keys": [
+   "count",
+   "dir",
+   "enabled",
+   "hour",
+   "keep",
+   "last",
+   "last_attempt",
+   "last_error",
+   "next_run",
+   "note",
+   "ok",
+   "running"
+  ],
+  "status": 200,
+  "type": "application/json"
+ },
  "/api/chat/sessions": {
   "keys": [
    "ok",

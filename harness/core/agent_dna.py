@@ -18,12 +18,13 @@ from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional, Tuple
 
 from ..config import fleet_config
+from . import datadir
 from ..data_fabric.valkey_amem import ValkeyAMEM
 from ..data_fabric.qdrant_brain import QdrantBrain
 
 logger = logging.getLogger("Harness.AgentDNA")
 
-AGENT_STORAGE_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "data", "agent_dna")
+AGENT_STORAGE_DIR = datadir.resolve("agent_dna")      # the data folder (core/datadir.py), or where an older install has it
 
 class AgentDNAManager:
     def __init__(self, storage_dir: str = AGENT_STORAGE_DIR):

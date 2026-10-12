@@ -36,6 +36,8 @@ import tempfile
 import time
 from typing import Any, BinaryIO, Dict, List, Optional, Union
 
+from stonesage.archive import MemberRules, read_member
+
 FORMAT_VERSION = 1            # the soul folder's layout (manifest "format")
 ARCHIVE_FORMAT = 1            # the export archive's layout (manifest copy "export": {"format": ...})
 AGENT_ID = re.compile(r"^[a-z0-9-]{1,64}$")
@@ -201,31 +203,15 @@ def export_soul(data_dir: str, agent_id: str, dest: Union[str, BinaryIO]) -> Dic
 
 def _read_archive(archive: Union[str, BinaryIO]) -> Dict[str, bytes]:
     """Every member of the archive as {name: bytes}, or SoulError. Only plain regular files with plain names get through
-    (no paths, no '..', no links, devices or directories), within the size and count caps, each read to its declared size."""
+    (no paths, no '..', no links, devices or directories), within the size and count caps, each read to its declared size.
+    The member rules are the shared ones (stonesage/archive.py); backups use the same."""
     files: Dict[str, bytes] = {}
-    total = 0
+    rules = MemberRules(SoulError, _FILE_NAME.match, MAX_FILE_BYTES, MAX_TOTAL_BYTES, MAX_FILES)
     source = {"fileobj": archive} if hasattr(archive, "read") else {"name": archive}
     try:
         with tarfile.open(mode="r:gz", **source) as tf:
             for m in tf:
-                name = m.name
-                if not m.isreg():
-                    raise SoulError(f"'{name}' is not a plain file (links, directories and devices are refused)")
-                if not _FILE_NAME.match(name):
-                    raise SoulError(f"'{name}' is not a plain file name (no paths, no '..', no hidden names)")
-                if name in files:
-                    raise SoulError(f"'{name}' appears twice")
-                if len(files) >= MAX_FILES:
-                    raise SoulError(f"more than {MAX_FILES} files")
-                if m.size > MAX_FILE_BYTES:
-                    raise SoulError(f"'{name}' is over the {MAX_FILE_BYTES // (1024 * 1024)} MB limit for one file")
-                total += m.size
-                if total > MAX_TOTAL_BYTES:
-                    raise SoulError(f"the archive is over the {MAX_TOTAL_BYTES // (1024 * 1024)} MB limit in total")
-                data = tf.extractfile(m).read(m.size)
-                if len(data) != m.size:
-                    raise SoulError(f"'{name}' is cut short")
-                files[name] = data
+                files[rules.check(m)] = read_member(tf, m, SoulError)
     except SoulError:
         raise
     except (tarfile.TarError, OSError, EOFError, ValueError, UnicodeError) as e:

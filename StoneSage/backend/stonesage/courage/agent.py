@@ -17,9 +17,11 @@ import threading
 import time
 import urllib.request
 import uuid
+from datetime import datetime
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple
 
 from lodestone import endpoints
+from lodestone.site import clock
 
 from .escalation import failed
 from .prompt import build_presence_card, build_static_prompt, build_system_prompt
@@ -575,7 +577,7 @@ class CourageAgent:
                 return
 
         brain = self.brain() if self.brain else None     # engine lease (engine_lease.py): who answers for :8001 now
-        until = time.strftime("%H:%M", time.localtime(brain["until"])) if brain else ""
+        until = clock(datetime.fromtimestamp(brain["until"])) if brain else ""
         if brain and brain.get("mode") == "on_loan":   # lent out, no stand-in: say so plainly (not a failure)
             text = (f"Done. The big brain's on loan until {until}, so that's all I can say for now."
                     if tr.path == "approval_yes" else

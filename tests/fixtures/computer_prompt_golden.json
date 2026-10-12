@@ -10,7 +10,7 @@
     "role": "system"
    },
    {
-    "content": "[Who is where, Sun 12:00: GPS says home/away; camera sightings are past views, call presence_now or camera_look for now]\n- Alex: seen 3 min ago\n- Sam: no recent sighting\n- Bella: seen 12 min ago on Living Room\n- Rex: no recent sighting\n\n[memory] You like tea.",
+    "content": "[Who is where, Sun 12:00 PM: GPS says home/away; camera sightings are past views, call presence_now or camera_look for now]\n- Alex: seen 3 min ago\n- Sam: no recent sighting\n- Bella: seen 12 min ago on Living Room\n- Rex: no recent sighting\n\n[memory] You like tea.",
     "role": "system"
    },
    {
@@ -276,7 +276,7 @@
     "role": "system"
    },
    {
-    "content": "[Who is where, Sun 12:00: GPS says home/away; camera sightings are past views, call presence_now or camera_look for now]\n- Alex: seen 3 min ago\n- Sam: no recent sighting\n- Bella: seen 12 min ago on Living Room\n- Rex: no recent sighting\n\n[memory] You like tea.",
+    "content": "[Who is where, Sun 12:00 PM: GPS says home/away; camera sightings are past views, call presence_now or camera_look for now]\n- Alex: seen 3 min ago\n- Sam: no recent sighting\n- Bella: seen 12 min ago on Living Room\n- Rex: no recent sighting\n\n[memory] You like tea.",
     "role": "system"
    },
    {

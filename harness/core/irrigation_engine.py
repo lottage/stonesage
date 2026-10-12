@@ -22,6 +22,7 @@ import threading
 from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
 from ..config import _load_stonesage_config
+from . import datadir
 from ..connectors.hass_connector import hass_connector
 
 logger = logging.getLogger("Harness.IrrigationEngine")
@@ -37,8 +38,8 @@ def zone_map() -> Dict[str, Dict[str, Any]]:
     return {k: dict({"default_duration_mins": 15, "description": ""}, **v) for k, v in (irrigation_config().get("zones") or {}).items()}
 
 
-IRRIGATION_LOG_FILE = os.path.join(os.path.dirname(__file__), "..", "..", "data", "irrigation_log.json")
-OLD_LOG_FILE = os.path.join(os.path.dirname(__file__), "..", "..", "data", "garden_log.json")   # the log's name before the rename
+IRRIGATION_LOG_FILE = datadir.resolve("irrigation_log.json")
+OLD_LOG_FILE = datadir.resolve("garden_log.json")   # the log's name before the rename
 
 class IrrigationEngine:
     def __init__(self):

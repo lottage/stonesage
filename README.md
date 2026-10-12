@@ -57,6 +57,14 @@ python StoneSage/backend/server.py   # cockpit on http://localhost:8888 (config:
 
 `StoneSage/backend/config.example.json` shows the layout. `config.json` holds secrets and is never committed.
 
+## Backups and upgrades
+
+The server writes a backup of `config.json`, the souls and the small state files every night (config `backup`), keeps the newest
+14, and writes one before it migrates an old settings file; `python -m stonesage.backup create | list | restore <file>` does it
+by hand. A backup holds your secrets and there is no download route: copy the files off the machine yourself. Upgrading is
+"get the new version and restart" (`docker compose pull && docker compose up -d`, or `git pull`); a settings file written by a
+newer version is refused. [docs/UPGRADING.md](docs/UPGRADING.md) covers upgrading, rolling back and moving to another machine.
+
 ## Tests
 
 ```

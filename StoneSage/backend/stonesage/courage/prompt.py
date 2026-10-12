@@ -6,6 +6,8 @@ not designed to create stories"); the companion part is phrased as what Courage 
 from datetime import datetime
 from typing import Any, Dict, Optional, Sequence
 
+from lodestone.site import clock
+
 # The platform's default persona, for an agent no app has given one. Computer's own persona (the attic computer of a
 # home) belongs to the Home app: hearth/persona.py renders it from the household, and soul.py keeps the agent's copy.
 PERSONA = (
@@ -42,7 +44,7 @@ def build_presence_card(state: Optional[Dict[str, Any]], now: Optional[datetime]
     """Compact 'who is where' card: phone GPS / Life360 home status for people (HA person entities), then the
     last camera sighting for everyone."""
     now = now or datetime.now()
-    lines = [f"[Who is where, {now.strftime('%a %H:%M')}: GPS says home/away; camera sightings are past views, "
+    lines = [f"[Who is where, {now.strftime('%a') + ' ' + clock(now)}: GPS says home/away; camera sightings are past views, "
              "call presence_now or camera_look for now]"]
     locations = (state or {}).get("locations") or {}
     home_status = (state or {}).get("home_status") or {}

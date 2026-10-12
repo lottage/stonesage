@@ -16,11 +16,12 @@ import urllib.error
 from typing import Dict, Any, List, Optional
 
 from harness.config import fleet_config
+from harness.core import datadir
 
 logger = logging.getLogger("Harness.EntityProfiles")
 
-DATA_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "data", "profiles"))
-PROFILES_FILE = os.path.join(DATA_DIR, "entity_profiles.json")
+PROFILES_FILE = datadir.resolve("profiles", "entity_profiles.json")
+DATA_DIR = os.path.dirname(PROFILES_FILE)
 
 
 class EntityProfileManager:

@@ -74,7 +74,15 @@ PLATFORM_FEATURES = {
     ("POST", "/api/workspace/save"): "file_editor",
     ("POST", "/api/workspace/diff"): "file_editor",
 }
-FEATURE_NAMES = ("web_terminal", "code_tools", "raw_ha_call", "file_editor")
+# The shelved features (Assembly Hall, the autonomous thinking loop, agent reproduction, Citadel 3D / Blender, trainer runs, and the
+# older subagent and planner routes): still in the code, off unless config `features.shelved` is true. Their behaviour is
+# unchanged when on; nothing is being extended. A route here answers 404 while the flag is off, after the login check.
+SHELVED_PREFIXES = ("/api/trainer/", "/api/dataset/", "/api/hivemind/", "/api/agent/", "/api/3d/", "/api/subagents/", "/api/planner/")
+FEATURE_NAMES = ("web_terminal", "code_tools", "raw_ha_call", "file_editor", "shelved")
+
+
+def is_shelved(path: str) -> bool:
+    return any(path.startswith(p) for p in SHELVED_PREFIXES)
 
 
 # ---- the key ----------------------------------------------------------------------------------------------------
@@ -129,6 +137,9 @@ def ensure_key(config: Dict[str, Any], config_file: str) -> Tuple[str, bool]:
             raise RuntimeError(f"cannot read {config_file} to save the API key: {e}") from e
     else:
         on_disk = json.loads(json.dumps(config or {}))        # no file yet: keep what the server runs on (the example's defaults)
+        from stonesage import config_migrate                    # (imported here: config_migrate imports this module)
+        on_disk.setdefault("config_version", config_migrate.LATEST)    # a file born now is current: nothing to migrate
+        config.setdefault("config_version", config_migrate.LATEST)
     on_disk.setdefault("api", {})["key"] = key
     write_private_json(config_file, on_disk)
     config.setdefault("api", {})["key"] = key
@@ -461,6 +472,10 @@ def gate(h, method: str, config: Dict[str, Any], routes=None, frontend_dir: Opti
     if flag and not feature_enabled(config, flag):
         reply(h, 404, {"ok": False, "error": f"this feature is off (set features.{flag} to true in config.json to turn it on)",
                        "feature": flag})
+        return False
+    if is_shelved(path) and not feature_enabled(config, "shelved"):
+        reply(h, 404, {"ok": False, "error": "this part of StoneSage is shelved and off (set features.shelved to true in config.json "
+                                             "to turn it on)", "feature": "shelved"})
         return False
     return True
 

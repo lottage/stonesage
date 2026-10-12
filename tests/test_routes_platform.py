@@ -53,7 +53,9 @@ class TestPlatformRoutes(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             cfg = os.path.join(tmp, "config.json")
             shutil.copyfile(CONFIG, cfg)                 # a copy: a route that saves must not touch the fixture
-            with mock.patch.object(server, "CONFIG_FILE", cfg):
+            # the shelved routes (trainer, hivemind, 3D...) are 404 unless features.shelved is on; their golden is what they answer
+            # when on, so a change to their behaviour still shows (the 404 itself is tested in test_route_auth.py)
+            with mock.patch.object(server, "CONFIG_FILE", cfg), mock.patch.dict(server.config, {"features": {"shelved": True}}):
                 t = time.time()
                 cls.now = {p: shape("GET", p) for p in cls.routes}
                 cls.elapsed = time.time() - t

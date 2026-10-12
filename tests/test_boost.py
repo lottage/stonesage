@@ -162,6 +162,86 @@ class TestEgressScan(unittest.TestCase):
         self.assertTrue(egress.classify("general", msgs)["images"])
 
 
+class TestEgressSeesEverything(unittest.TestCase):
+    """M4 of the security review: the scan reads every piece of text that goes to a cloud source, not only the chat messages."""
+
+    def verdict(self, messages=None, tools=None, extra=None, declared="general"):
+        return egress.classify(declared, messages or [{"role": "user", "content": "hello"}], ("bella",), tools=tools, extra=extra)
+
+    def test_a_clean_request_stays_general(self):
+        tools = [{"type": "function", "function": {"name": "add", "description": "Add two numbers.",
+                                                   "parameters": {"type": "object", "properties": {"a": {"type": "number"}}}}}]
+        self.assertEqual(self.verdict(tools=tools, extra={"stop": ["END"]})["class"], "general")
+
+    def test_the_system_prompt_is_scanned(self):
+        msgs = [{"role": "system", "content": "You run the house at 10.0.0.5."}, {"role": "user", "content": "hi"}]
+        self.assertEqual(self.verdict(msgs)["class"], "home")
+
+    def test_a_tool_result_is_scanned(self):
+        msgs = [{"role": "user", "content": "is it on?"},
+                {"role": "assistant", "content": None, "tool_calls": [{"id": "1", "type": "function",
+                                                                       "function": {"name": "states", "arguments": "{}"}}]},
+                {"role": "tool", "tool_call_id": "1", "content": '{"light.kitchen_ceiling": "on"}'}]
+        v = self.verdict(msgs)
+        self.assertEqual(v["class"], "home")
+        self.assertIn("home:ha_entity", v["hits"])
+
+    def test_tool_call_arguments_and_nested_content_parts_are_scanned(self):
+        args = [{"role": "assistant", "content": "", "tool_calls": [{"id": "1", "type": "function", "function": {
+            "name": "x", "arguments": '{"entity_id": "camera.front_door"}'}}]}]
+        self.assertEqual(self.verdict(args)["class"], "home")
+        nested = [{"role": "user", "content": [{"type": "tool_result", "content": [{"type": "text", "text": "Bella is in the kitchen"}]}]}]
+        self.assertEqual(self.verdict(nested)["class"], "home")
+        secret = [{"role": "user", "content": [{"type": "tool_result", "content": "HASS_TOKEN=abcdef1234567890"}]}]
+        self.assertEqual(self.verdict(secret)["class"], "secret")
+
+    def test_tool_schemas_are_scanned(self):
+        def tool(description, prop=None):
+            return [{"type": "function", "function": {"name": "t", "description": description, "parameters": {
+                "type": "object", "properties": {"where": {"type": "string", "description": prop or "a place",
+                                                           "enum": ["kitchen", "hall"]}}}}}]
+        self.assertEqual(self.verdict(tools=tool("Switch light.kitchen_ceiling on or off."))["class"], "home")
+        self.assertEqual(self.verdict(tools=tool("ok", "where Bella sleeps"))["class"], "home")
+        self.assertEqual(self.verdict(tools=tool("Reach the NAS at 192.0.2.1 and 10.0.0.9"))["class"], "home")
+        self.assertEqual(self.verdict(tools=tool("Auth with token: abcdefghijklmnop"))["class"], "secret")
+
+    def test_the_extra_body_fields_are_scanned(self):
+        self.assertEqual(self.verdict(extra={"stop": ["10.0.0.5"]})["class"], "home")
+        self.assertEqual(self.verdict(extra={"response_format": {"type": "json_schema", "json_schema": {
+            "name": "x", "description": "api_key=abcdefghijklmnop"}}})["class"], "secret")
+
+    def test_images_in_a_nested_or_unknown_image_part_are_seen(self):
+        for part in ({"type": "image", "source": {"data": "x"}}, {"type": "text", "text": "a", "image_url": {"url": "u"}}):
+            self.assertTrue(self.verdict([{"role": "user", "content": [part]}])["images"], part)
+
+    def test_everything_in_the_request_body_was_scanned(self):
+        """The invariant: every text value in the body that goes out (apart from the model name) is a text the scan read."""
+        http = FakeHttp()
+        r = BoostRouter(lambda: cfg(), None, http=http, env=ENV, clock=Clock(), home_terms=("bella",))
+        messages = [{"role": "system", "content": "sys"}, {"role": "user", "content": "q"},
+                    {"role": "assistant", "content": None, "tool_calls": [{"id": "c1", "type": "function",
+                                                                          "function": {"name": "n", "arguments": "{\"a\": 1}"}}]},
+                    {"role": "tool", "tool_call_id": "c1", "content": "result text"}]
+        tools = [{"type": "function", "function": {"name": "n", "description": "does n", "parameters": {
+            "type": "object", "properties": {"a": {"type": "integer", "description": "the a"}}, "required": ["a"]}}}]
+        res = r.complete(messages, "chat", tools=tools, extra={"stop": ["STOP"], "tool_choice": "auto"})
+        self.assertTrue(res["ok"])
+        sent = [c[3] for c in http.calls if c[0] == "POST"][-1]
+        scanned = set(egress.request_texts(messages, tools, {"stop": ["STOP"], "tool_choice": "auto"}))
+        leaves = {t for t in egress.iter_strings({k: v for k, v in sent.items() if k != "model"}, keys=False)}
+        self.assertEqual(leaves - scanned, set(), "text left the house that the egress scan never read")
+
+    def test_a_tainted_tool_schema_keeps_the_call_off_every_cloud_source(self):
+        http = FakeHttp()
+        r = BoostRouter(lambda: cfg(), None, http=http, env=ENV, clock=Clock(), home_terms=("bella",))
+        tools = [{"type": "function", "function": {"name": "t", "description": "token: abcdefghijklmnop", "parameters": {}}}]
+        res = r.complete([{"role": "user", "content": "hi"}], "chat", tools=tools)
+        self.assertEqual((res["class"], res["provider"]), ("secret", "local"))
+        self.assertTrue(all("127.0.0.1" in c[1] for c in http.calls if c[0] == "POST"))
+        clean = [{"type": "function", "function": {"name": "t", "description": "adds numbers", "parameters": {}}}]
+        self.assertEqual(r.complete([{"role": "user", "content": "hi"}], "chat", tools=clean)["class"], "general")
+
+
 class TestEgressPolicy(unittest.TestCase):
     """The owner's egress_allowed() (Learn-by-Doing): must match the tiered rule."""
 
