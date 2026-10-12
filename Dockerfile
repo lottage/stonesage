@@ -14,7 +14,7 @@
 FROM python:3.12.7-slim-bookworm AS build
 RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates \
  && rm -rf /var/lib/apt/lists/*
-ARG LODESTONE_PIP="lodestone @ git+https://github.com/lottage/lodestone@v0.1.0-rc.2"
+ARG LODESTONE_PIP="lodestone @ git+https://github.com/lottage/lodestone@v0.1.0-rc.3"
 COPY docker/requirements.lock.txt /tmp/requirements.txt
 RUN python -m venv /opt/venv \
  && /opt/venv/bin/pip install --no-cache-dir -r /tmp/requirements.txt "${LODESTONE_PIP}"
