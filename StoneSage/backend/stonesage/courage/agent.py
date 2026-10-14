@@ -506,13 +506,15 @@ class CourageAgent:
         gen = [0, 0.0]
         last_user = next((m["content"] for m in reversed(history) if m.get("role") == "user"), "")
         tr = TurnTrace(session_id, last_user if isinstance(last_user, str) else "")
+        # only a house agent (Computer) speaks its replies: an agent without a home (Atlas) keeps markdown, code fences included
+        speak = plain_text if self.home_context else (lambda t: t)
         try:
             for ev in self._run(history, session_id, gen, tr):
                 if ev["type"] == "partial":
-                    ev = dict(ev, content=plain_text(ev.get("content") or ""))
+                    ev = dict(ev, content=speak(ev.get("content") or ""))
                 if ev["type"] == "final":
                     ev = self._escalate(ev, tr, session_id)
-                    ev = dict(ev, content=plain_text(ev.get("content") or ""))   # no markdown: it is spoken aloud too
+                    ev = dict(ev, content=speak(ev.get("content") or ""))   # no markdown: it is spoken aloud too
                     tr.end("answered", ev.get("content") or "")
                     if gen[0]:
                         yield {"type": "usage", "completion_tokens": gen[0],

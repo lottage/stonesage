@@ -15,7 +15,7 @@ import agent_fixture  # noqa: E402
 import prompt_capture  # noqa: E402
 from agent_fixture import ScriptedLLM, reply, run, tool_call  # noqa: E402
 from stonesage import agents  # noqa: E402
-from stonesage.agents import ATLAS, ATLAS_PERSONA, AgentHub, AgentServices  # noqa: E402
+from stonesage.agents import ATLAS, ATLAS_PERSONA, ATLAS_PERSONA_VERSION, AgentHub, AgentServices  # noqa: E402
 from stonesage.courage import prompt  # noqa: E402
 from stonesage.courage.agent import FRESH_FACTS  # noqa: E402
 from stonesage.courage.memory import EXTRACT, ConversationMemory  # noqa: E402
@@ -92,7 +92,7 @@ class TestAtlas(unittest.TestCase):
         # mid-conversation: still no presence card and no "facts come from a tool" reminder
         run(agent, "and now?", history=[{"role": "user", "content": "hi"}, {"role": "assistant", "content": "Hello."}])
         blob = json.dumps(llm.requests[1]["messages"])
-        for house in ("Who is where", "presence", FRESH_FACTS[:30], "in the attic", "camera"):
+        for house in ("Who is where", "presence card", FRESH_FACTS[:30], "in the attic", "camera_look", "camera_scan"):
             self.assertNotIn(house, blob)
         self.assertEqual(llm.requests[1]["model"], "coordinator")
 
@@ -106,11 +106,55 @@ class TestAtlas(unittest.TestCase):
         self.assertEqual(llm.requests[1]["messages"][0]["content"], "You are Atlas, edited.")
 
     def test_persona_is_lean_and_has_no_house_or_negative_identity(self):
-        self.assertLess(len(ATLAS_PERSONA), 1200)
+        self.assertLess(len(ATLAS_PERSONA), 1800)           # size budget: it runs on a 14B local model every turn
         low = ATLAS_PERSONA.lower()
-        for word in ("house", "home", "camera", "you are not", "never", "don't"):
+        for word in ("camera_", "presence card", "who is where", "you are not", "never", "don't"):
             self.assertNotIn(word, low)
         self.assertTrue(ATLAS_PERSONA.startswith("You are Atlas"))
+
+    def test_persona_loads_and_states_its_role_and_the_redirect(self):
+        # the seeded soul file is the persona, and it names the role (mentor) and where house requests go (Computer)
+        agent, llm, _ = self.atlas(reply("ok"))
+        run(agent, "hi")
+        text = llm.requests[0]["messages"][0]["content"]
+        self.assertEqual(text, ATLAS_PERSONA)
+        self.assertIn("mentor", text)
+        self.assertIn("Computer", text)
+        self.assertIn("fenced", text, "the code-block rule is in the persona")
+
+    def test_home_context_stays_off_for_atlas(self):
+        agent, llm, _ = self.atlas(reply("ok"))
+        self.assertIs(agent.home_context, False)
+        run(agent, "how do I reverse a list?")
+        blob = json.dumps(llm.requests[0]["messages"])
+        self.assertNotIn("Who is where", blob)
+        self.assertNotIn("presence", blob.lower())
+
+    def test_persona_version_is_recorded_and_an_untouched_old_soul_is_upgraded(self):
+        self.assertEqual(agents.ATLAS.persona_version, 2)
+        self.assertEqual(agents.ATLAS_PERSONA_VERSION, 2)
+        root = os.path.join(self.d, "souls", "atlas")
+        os.makedirs(root)
+        with open(os.path.join(root, "persona.md"), "w", encoding="utf-8") as f:
+            f.write("You are Atlas, an old v1 persona.")
+        # the manifest of a v1 soul seeded by the old code: the seed hash of the v1 text
+        from stonesage.soul import _sha
+        with open(os.path.join(root, "manifest.json"), "w", encoding="utf-8") as f:
+            json.dump({"id": "atlas", "name": "Atlas", "format": 1, "created": 1.0,
+                       "persona_seed": _sha("You are Atlas, an old v1 persona.")}, f)
+        soul = Soul.open(self.d, "atlas", display_name="Atlas", default_persona=ATLAS_PERSONA,
+                         default_persona_version=ATLAS_PERSONA_VERSION)
+        self.assertEqual(soul.persona(), ATLAS_PERSONA)
+        self.assertEqual(soul.manifest["persona_version"], 2)
+
+    def test_an_edited_persona_keeps_its_own_text_and_version(self):
+        root = os.path.join(self.d, "souls", "atlas")
+        Soul.open(self.d, "atlas", display_name="Atlas", default_persona=ATLAS_PERSONA, default_persona_version=2)
+        with open(os.path.join(root, "persona.md"), "w", encoding="utf-8") as f:
+            f.write("My own Atlas, edited by a person.")
+        soul = Soul.open(self.d, "atlas", display_name="Atlas", default_persona=ATLAS_PERSONA, default_persona_version=3)
+        self.assertEqual(soul.persona(), "My own Atlas, edited by a person.")
+        self.assertEqual(soul.manifest["persona_version"], 2)   # not bumped: the text is no longer the code's
 
     def test_home_tools_are_refused_even_when_the_model_asks(self):
         call = tool_call("ha_call", {"domain": "light", "service": "turn_on", "entity_id": "light.kitchen"})

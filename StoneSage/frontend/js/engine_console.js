@@ -63,6 +63,8 @@ export function initEngineConsole() {
     });
   });
 
+  loadAppTabs();     // tabs that installed apps bring (none when no app brings one)
+
   // Debug stream controls
   const debugSendBtn = document.getElementById('econsole-debug-send');
   if (debugSendBtn) debugSendBtn.addEventListener('click', sendDebugQuery);
@@ -103,6 +105,58 @@ export function destroyEngineConsole() {
   stopLogViewer();
 }
 
+// ─── Tabs that apps bring (stonesage/apps.py add_tab; GET /api/apps) ───────────────────────────────────
+// An app's tab is a button, an empty pane (<div id="<id>-root">) and a script of the app's own (served at /apps/<app>/..., behind
+// the login). The script is imported the first time the tab is opened, then window[tab.open]() draws into the pane.
+const appTabs = {};
+const TAB_ID = /^[a-z0-9_-]{1,40}$/;
+
+async function loadAppTabs() {
+  let data = null;
+  try {
+    const res = await fetch('/api/apps');
+    data = res.ok ? await res.json() : null;
+  } catch (_) { return; }
+  if (!data || !Array.isArray(data.apps) || !data.apps.length) return;      // no app brings anything: the page is left as it is
+  const nav = document.querySelector('.econsole-subnav');
+  const host = document.getElementById('engine-layer-console');
+  if (!nav || !host) return;
+  const before = nav.querySelector('.econsole-subnav-btn[data-layer="debug"]');
+  for (const app of data.apps) {
+    for (const tab of app.tabs || []) {
+      if (tab.target !== 'engine_console' || !TAB_ID.test(String(tab.id)) || appTabs[tab.id]) continue;
+      if (document.getElementById(`econsole-layer-${tab.id}`)) continue;
+      if (!String(tab.script || '').startsWith('/apps/')) continue;       // only a file the platform serves from an app's folder
+      appTabs[tab.id] = tab;
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'econsole-subnav-btn';
+      btn.dataset.layer = tab.id;
+      btn.style.color = 'var(--term-text-bright)';
+      btn.textContent = `[${tab.label}]`;
+      btn.addEventListener('click', () => switchConsoleSublayer(tab.id));
+      nav.insertBefore(btn, before);
+      const pane = document.createElement('div');
+      pane.className = 'econsole-layer';
+      pane.id = `econsole-layer-${tab.id}`;
+      pane.style.display = 'none';
+      const rootDiv = document.createElement('div');
+      rootDiv.id = `${tab.id}-root`;
+      pane.appendChild(rootDiv);
+      host.appendChild(pane);
+    }
+  }
+}
+
+async function openAppTab(tab) {
+  try {
+    await import(tab.script);
+    if (tab.open && typeof window[tab.open] === 'function') window[tab.open]();
+  } catch (err) {
+    console.warn('[EngineConsole] app tab', tab.id, 'did not load:', err);
+  }
+}
+
 // ─── Sub-Layer Switching ─────────────────────────────────────────────────
 function switchConsoleSublayer(layerId) {
   consoleSublayer = layerId;
@@ -115,11 +169,13 @@ function switchConsoleSublayer(layerId) {
   if (pane) pane.style.display = 'block';
 
   const tabs = document.getElementById('econsole-engine-tabs');
-  if (tabs) tabs.style.display = ['loader', 'boost', 'trace', 'memories'].includes(layerId) ? 'none' : 'flex';  // own pickers / not per engine
+  const appTab = appTabs[layerId];
+  if (tabs) tabs.style.display = (['loader', 'boost', 'trace', 'memories'].includes(layerId) || (appTab && appTab.hide_engine_tabs)) ? 'none' : 'flex';  // own pickers / not per engine
   if (layerId === 'loader' && typeof window.openModelLoader === 'function') window.openModelLoader();
   if (layerId === 'boost' && typeof window.openBoost === 'function') window.openBoost();
   if (layerId === 'trace' && typeof window.openCourageTrace === 'function') window.openCourageTrace();
   if (layerId === 'memories' && typeof window.openCourageMemories === 'function') window.openCourageMemories();
+  if (appTab) openAppTab(appTab);
   if (layerId === 'dashboard') pollAllEngines();
   if (layerId === 'params') renderParameterEditor();
   if (layerId === 'sizer' && typeof window.recalculateHardwareCapacity === 'function') {

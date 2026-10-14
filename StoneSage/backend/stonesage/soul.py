@@ -3,7 +3,8 @@ A soul: everything that makes an agent that agent, kept in one local folder, ind
 (Roadmap Phase 11, step 1, 2026-10-03.)
 
     data/souls/<agent_id>/
-        manifest.json    id, display name, format version, created, persona seed hash
+        manifest.json    id, display name, format version, created, persona seed hash, persona_version (the code's version
+                         of the seeded persona; agents.py ATLAS_PERSONA_VERSION)
         persona.md       who the agent is (the system prompt's first part)
         memories.json    notes about the people it talks to (courage/memory.py writes it)
         (later steps)    commitments.json, threads.json, goals.json, journal.jsonl
@@ -78,10 +79,13 @@ def _write(path: str, text: str) -> None:
 
 class Soul:
     def __init__(self, root: str, agent_id: str, display_name: str = "", default_persona: str = "",
-                 legacy: Optional[Dict[str, str]] = None, clock=time.time):
-        """legacy: {soul file name: absolute path of the file it replaces}; copied in once, the old file left as a backup."""
+                 legacy: Optional[Dict[str, str]] = None, clock=time.time, default_persona_version: int = 0):
+        """legacy: {soul file name: absolute path of the file it replaces}; copied in once, the old file left as a backup.
+        default_persona_version: the code's version of default_persona, recorded in the manifest as persona_version when
+        the persona is (re)seeded; a soul whose persona was edited keeps its own text and its recorded version."""
         self.root, self.id = root, agent_id
         self._default_persona = default_persona
+        self._default_version = int(default_persona_version or 0)
         os.makedirs(root, exist_ok=True)
         self.manifest = self._load_manifest()
         if not self.manifest:
@@ -131,6 +135,8 @@ class Soul:
             _write(p, self._default_persona)
         if untouched:
             self.manifest["persona_seed"] = seed_hash
+            if self._default_version:
+                self.manifest["persona_version"] = self._default_version
 
     def persona(self) -> str:
         """The persona as the file has it now (re-read each call, so an edit takes effect on the next turn)."""

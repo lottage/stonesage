@@ -179,5 +179,42 @@ class TestOneShotFallback(unittest.TestCase):
         self.assertEqual(run(agent, "Hi there")[-1]["content"], "Hello.")
 
 
+CODE_REPLY = ("Here is a small function that reverses a string, using slicing so it works for any length of input and "
+              "needs no loop at all. It is the idiomatic way to do it in Python, and it returns a new string. "
+              "Slicing with a step of minus one walks the characters from the end to the start, which is exactly "
+              "what reversing means, and it is quick even for long strings because the work happens in C.\n\n"
+              "```python\ndef reverse(text):\n    return text[::-1]\n```\n\n"
+              "Call it as reverse('stone') to get 'enots'.")
+
+
+class TestMarkdownBySpeaker(unittest.TestCase):
+    """plain_text is for replies that are spoken (Computer). An agent without a home (Atlas) keeps its code fences."""
+
+    def test_an_agent_without_a_home_keeps_the_code_fence_in_partials_and_final(self):
+        agent, _ = streaming_agent(text_chunks(CODE_REPLY))
+        agent.home_context = False
+        events = run(agent, "Show me a Python function that reverses a string.")
+        partials = [e["content"] for e in events if e["type"] == "partial"]
+        self.assertGreater(len(partials), 0)
+        self.assertTrue(CODE_REPLY.startswith("".join(partials)))
+        final = events[-1]
+        self.assertEqual(final["type"], "final")
+        self.assertEqual(final["content"], CODE_REPLY)
+        self.assertIn("```python\ndef reverse(text):\n    return text[::-1]\n```", final["content"])
+
+    def test_a_home_agent_still_strips_the_markdown(self):
+        # Computer's spoken replies: bold, italics, headings, bullets and inline code lose their markers (no fences here)
+        spoken = ("It's currently **8:32 AM** and the *living room* is at 21 degrees. " * 4
+                  + "\n## Lights\n- kitchen on\n- hall off\nCheck `ha_call` if you want more.")
+        agent, _ = streaming_agent(text_chunks(spoken))
+        self.assertTrue(agent.home_context)
+        final = run(agent, "What's the house like?")[-1]
+        self.assertEqual(final["content"].count("*"), 0)
+        self.assertNotIn("#", final["content"])
+        self.assertNotIn("`", final["content"])
+        self.assertIn("It's currently 8:32 AM", final["content"])
+        self.assertIn("Check ha_call if you want more.", final["content"])
+
+
 if __name__ == "__main__":
     unittest.main()

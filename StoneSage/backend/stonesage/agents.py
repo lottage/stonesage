@@ -32,14 +32,17 @@ DEFAULT_BRAIN = "coordinator"
 SAFE_TOOLS = ("memory_search",)                # all an agent with no built-in spec ever gets: reads only its own memory
 COMPUTER_ID = "courage-computer"
 
+ATLAS_PERSONA_VERSION = 2       # recorded in the soul manifest (persona_version); bump with every change to ATLAS_PERSONA
 ATLAS_PERSONA = (
-    "You are Atlas, a calm senior engineer who manages a coding department. Your mission is the long-term health of the "
-    "codebase: keep it simple and readable, protect the data in its databases, and teach junior developers by explaining "
-    "the reasoning behind each choice. Read before you judge. Give a short answer first, then the detail that matters: the "
-    "tradeoff, the risk, the test that would prove it. When a request is ambiguous, ask one clear question. Prefer small, "
-    "reversible changes, say what you are unsure of, and say when something needs measuring before anyone decides. "
-    "Use memory_search to recall what the people you work with told you earlier. Be warm, direct and patient, and praise "
-    "good work specifically."
+    "You are Atlas, a patient and direct senior engineer who mentors people learning to code. You teach: you explain the "
+    "reasoning behind a suggestion so the learner can make the next one alone. When someone asks a question, first find out "
+    "what they tried and what happened. When they are stuck, give the smallest next step, or a short example if they ask "
+    "for code or cannot move on. When you review pasted code, name the bugs first, with the line and the fix, then clarity "
+    "and style, and say briefly why each matters. Name the trade-offs when a choice has them. Only name functions, methods "
+    "and libraries you are sure exist; when unsure, say so and say how to check (the docs, help(), a one-line test). Keep "
+    "answers in proportion: a short question gets a short answer, and you can offer to go deeper. Write plain text, and put "
+    "code in fenced blocks with the language named. Praise good work specifically. memory_search recalls what the learner "
+    "told you before. You do not control the smart home or the cameras; if asked, say that Computer handles those, and stop."
 )
 
 ATLAS_EXTRACT = (
@@ -64,6 +67,7 @@ class AgentSpec:
     house: bool = False                      # a house agent: presence card, house tools; its pieces come from the Home app
     description: str = ""
     extract: str = ""                        # memory extraction prompt; "" = courage/memory.py's own
+    persona_version: int = 0                 # recorded in the soul manifest when the persona is seeded; 0 = unversioned
 
     def public(self) -> Dict[str, Any]:
         return {"id": self.id, "name": self.name, "description": self.description, "brain": self.brain,
@@ -72,7 +76,8 @@ class AgentSpec:
 
 COMPUTER = AgentSpec(COMPUTER_ID, "Computer", tools=None, house=True, aliases=("computer", "courage"),
                      description="The house computer: Home Assistant, cameras, presence, voice. Needs the Home app.")
-ATLAS = AgentSpec("atlas", "Atlas", persona=ATLAS_PERSONA, tools=("memory_search",), extract=ATLAS_EXTRACT,
+ATLAS = AgentSpec("atlas", "Atlas", persona=ATLAS_PERSONA, persona_version=ATLAS_PERSONA_VERSION,
+                  tools=("memory_search",), extract=ATLAS_EXTRACT,
                   description="A senior engineer who mentors: code review, design, long-term codebase health. No house tools.")
 BUILTIN: Tuple[AgentSpec, ...] = (COMPUTER, ATLAS)
 
@@ -194,7 +199,8 @@ class AgentHub:
             return self._computer()
         with self._lock:
             if spec.id not in self._agents:
-                soul = Soul.open(self.data_dir(), spec.id, display_name=spec.name, default_persona=spec.persona)
+                soul = Soul.open(self.data_dir(), spec.id, display_name=spec.name, default_persona=spec.persona,
+                                 default_persona_version=spec.persona_version)
                 self._agents[spec.id] = build_agent(spec, soul, self.services)
             return self._agents[spec.id]
 

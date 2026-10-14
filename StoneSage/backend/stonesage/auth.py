@@ -43,6 +43,38 @@ COOKIE = "ss_session"
 SESSION_TTL = 30 * 24 * 3600
 UNSAFE_METHODS = ("POST", "PUT", "DELETE", "PATCH")
 OWNER = "owner"                                          # the principal of a key or cookie holder
+# Scoped keys (docs/LAYERS.md, apps): an app can declare a key of its own that opens exactly the routes it names and nothing else
+# (Grove's model key: two routes, no cookie, no other path). The owner's key is never one of them (a scoped key equal to the server
+# key is refused, so a leaked scoped key is never the master). Declared through AppContext.add_scoped_key (stonesage/apps.py).
+class ScopedKey:
+    def __init__(self, name: str, routes, key_fn):
+        self.name = name                                       # the principal a request with this key becomes
+        self.routes = frozenset((m.upper(), p) for m, p in routes)
+        self.key_fn = key_fn                                   # (config) -> the key text, '' when none is configured
+
+
+SCOPED_KEYS: Dict[str, ScopedKey] = {}
+
+
+def register_scoped_key(name: str, routes, key_fn) -> ScopedKey:
+    """Declare (or replace, by name) a scoped key. `routes` = [(method, path), ...] exactly; `key_fn(config)` reads the key."""
+    if not name or name == OWNER or name.startswith(("trusted:", "ip:")):
+        raise ValueError(f"{name!r} cannot be the principal of a scoped key")
+    SCOPED_KEYS[name] = ScopedKey(name, routes, key_fn)
+    return SCOPED_KEYS[name]
+
+
+def unregister_scoped_key(name: str) -> None:
+    SCOPED_KEYS.pop(name, None)
+
+
+def scoped_key_value(config: Optional[Dict[str, Any]], name: str) -> str:
+    """The configured key of a declared scoped key, or '' (none, unknown name, or equal to the server key)."""
+    sk = SCOPED_KEYS.get(name)
+    key = str(sk.key_fn(config) or "").strip() if sk else ""
+    return "" if key == configured_key(config) else key
+
+
 
 # Session ids a client may not choose: the server builds these itself (an approval a person is asked in Home Assistant's voice
 # chat, an Alexa session, the API, a trusted machine, an address), and a client-chosen id must never land on someone else's slot.
@@ -425,6 +457,9 @@ def authenticate(h, config: Dict[str, Any], method: str, path: str) -> Tuple[Opt
             return None, "locked"
         if bearer_ok(auth_header, key):
             return OWNER, "bearer"
+        for sk in list(SCOPED_KEYS.values()):
+            if (method.upper(), path) in sk.routes and bearer_ok(auth_header, scoped_key_value(config, sk.name)):
+                return sk.name, sk.name + "-bearer"         # an app's scoped key: only the routes it declared, no cookie
         THROTTLE.fail(who)
         return None, "bad-key"
     cookie = cookie_value(h.headers.get("Cookie", ""))

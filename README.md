@@ -12,13 +12,16 @@ StoneSage is layer 1 of a three-layer pyramid. Dependencies point down only: a l
 
 | Layer | Repository | Job |
 | --- | --- | --- |
-| 2 | [Hearth](https://github.com/lottage/hearth) | Apps, starting with a Home Assistant house assistant |
+| 2 | [Hearth](https://github.com/lottage/hearth), [Grove](https://github.com/lottage/grove) | Apps: a Home Assistant house assistant; an optional agents add-on |
 | 1 | **StoneSage** (this repository) | Agent platform: souls, tools, approvals, memory |
 | 0 | [Lodestone](https://github.com/lottage/lodestone) | Serves the models |
 
 StoneSage imports Lodestone and reaches models over OpenAI-compatible endpoints; it imports nothing from any app. An
-app is a package with an `app.py` whose `install(ctx)` registers its routes, tools, hooks and start-up work; which
-apps run is a list in `config.json` (`"apps"`), so the same platform runs with Hearth, with another app, or with none.
+app is a package with an `app.py` whose `install(ctx)` registers its routes, tools, hooks, start-up work, Prometheus metrics, a scoped
+API key (a key that opens exactly the routes the app names) and a cockpit tab; which apps run is a list in `config.json` (`"apps"`),
+and an installed package announces itself through the Python entry point group `stonesage.apps`. Installing an app never switches it
+on, and with none listed nothing of any app appears in the server or the page (`GET /api/apps` is the manifest the cockpit builds its
+app tabs from).
 
 ## What is in it
 
@@ -31,8 +34,8 @@ apps run is a list in `config.json` (`"apps"`), so the same platform runs with H
 
 ## Install with Docker
 
-`docker build -t ghcr.io/lottage/stonesage:0.1.0-rc.4 .` builds the platform and cockpit image (non-root, state in the
-`/config` and `/data` volumes; Lodestone is installed from GitHub at the same release, v0.1.0-rc.4; `--build-arg
+`docker build -t ghcr.io/lottage/stonesage:0.1.0-rc.5 .` builds the platform and cockpit image (non-root, state in the
+`/config` and `/data` volumes; Lodestone is installed from GitHub at the same release, v0.1.0-rc.5; `--build-arg
 LODESTONE_PIP=...` points elsewhere). The easiest whole stack is the Compose file that Lodestone's installer writes
 (`python -m lodestone.installer --docker`, then `docker compose up -d --build`; the steps and prerequisites are in the
 [Hearth README](https://github.com/lottage/hearth)): models, a gateway, and StoneSage with the Hearth app. Docker runs the
@@ -60,7 +63,7 @@ StoneSage depends on [Lodestone](https://github.com/lottage/lodestone) (not on P
 same release, as part of the install:
 
 ```
-git clone --branch v0.1.0-rc.4 https://github.com/lottage/stonesage
+git clone --branch v0.1.0-rc.5 https://github.com/lottage/stonesage
 cd stonesage
 pip install -e .
 ```

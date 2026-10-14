@@ -11,6 +11,8 @@ rewritten here; edit it in the cockpit or in the volume.
     HASS_URL / HASS_TOKEN                                         -> homeassistant.url / .token (only when set)
     COORDINATOR_CPU  1 when the coordinator engine runs on a CPU   -> cluster.coordinator_cpu (longer waits for its answers)
     TZ                                                            -> server.timezone (when set and not UTC)
+    GROVE_WORKER_URL (+ GROVE_ENGINE_URL, GROVE_MODEL, GROVE_RESIDENT) -> the `grove` section, with the scheduler OFF (the optional
+                    Grove add-on; its keys come as STONESAGE_GROVE_CONTROL_KEY / STONESAGE_GROVE_MODEL_KEY and are not written)
 
 The token is read from the environment only to be written into config.json inside the volume, where StoneSage keeps it
 everywhere else; it is never printed.
@@ -41,6 +43,13 @@ def seed_config(env: Mapping[str, str]) -> Dict[str, Any]:
     hosts = [h.strip() for h in env.get("STONESAGE_ALLOWED_HOSTS", "").split(",") if h.strip()]
     if hosts:
         cfg["api"] = {"allowed_hosts": hosts}
+    worker = env.get("GROVE_WORKER_URL", "").strip()
+    if worker:
+        grove: Dict[str, Any] = {"worker_url": worker, "schedule": {"enabled": False}}
+        for key, var in (("engine_url", "GROVE_ENGINE_URL"), ("model", "GROVE_MODEL"), ("resident", "GROVE_RESIDENT")):
+            if env.get(var, "").strip():
+                grove[key] = env[var].strip()
+        cfg["grove"] = grove
     tz = env.get("TZ", "").strip()
     if tz and tz.upper() != "UTC":
         cfg["server"]["timezone"] = tz

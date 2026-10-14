@@ -23,7 +23,7 @@ import fnmatch
 import shlex
 import time
 import threading
-from typing import List, Dict, Any, Optional, Tuple
+from typing import Callable, List, Dict, Any, Optional, Tuple
 from datetime import datetime, timezone
 from lodestone import site
 LOCAL_TZ = site.local_tz()   # config server.timezone, else TZ, else the machine's zone (lodestone/site.py)
@@ -2442,6 +2442,19 @@ def get_engine_lease():
     return _engine_lease
 
 
+_phone_action_handlers: List[Callable[[str], Optional[str]]] = []     # tapped phone buttons that are not approvals (an app's own, e.g. Grove's model requests)
+
+
+def _add_phone_action_handler(handler: Callable[[str], Optional[str]]) -> None:
+    """Hand the phone's notification buttons to `handler(action) -> outcome | None` (push_approvals.extra_handlers), now if the agent
+    is built and when it is built otherwise."""
+    if handler not in _phone_action_handlers:
+        _phone_action_handlers.append(handler)
+    push = getattr(_courage_agent, "push", None)
+    if push and handler not in push.extra_handlers:
+        push.extra_handlers.append(handler)
+
+
 def _on_loan(role: str) -> Optional[float]:
     """Until when `role` is lent out by an engine lease, or None."""
     return _engine_lease.on_loan(role) if _engine_lease else None
@@ -2490,6 +2503,10 @@ def _prom_query(expr: str) -> List[Dict[str, Any]]:
 def _last_courage_turn() -> Optional[float]:
     recs = get_trace_log().recent(1, "courage")
     return recs[0].get("at") if recs else None
+
+
+def _pending_approvals() -> int:
+    return (_courage_agent_if_any() and get_courage_agent().pending.count()) or 0
 
 
 def get_idle_gate():
@@ -2714,6 +2731,9 @@ def get_courage_agent():
             _courage_agent.brain = lambda: _engine_lease.brain("coordinator") if _engine_lease else None   # lite / on loan
             if _courage_agent.push and _engine_lease and _engine_lease.handle_action not in _courage_agent.push.extra_handlers:
                 _courage_agent.push.extra_handlers.append(_engine_lease.handle_action)   # Another hour / Stop
+            for _handler in _phone_action_handlers:
+                if _courage_agent.push and _handler not in _courage_agent.push.extra_handlers:
+                    _courage_agent.push.extra_handlers.append(_handler)
             _courage_agent.escalation = Escalation(
                 load_config, boost=_escalation_boost, boost_available=_courage_boost_available,
                 frontier_available=None,   # frontier_worker.py is not installed (STATE.md, Boost section)
@@ -3548,6 +3568,9 @@ class StoneSageHandler(http.server.SimpleHTTPRequestHandler):
                 text = text.rstrip("\n") + "\n" + "\n".join(get_idle_gate().metrics()) + "\n"
             except Exception as e:
                 logger.warning(f"idle gate metrics: {e}")
+            extra = app_ctx.metrics_lines()     # whatever the loaded apps measure (apps.py add_metrics)
+            if extra:
+                text = text.rstrip("\n") + "\n" + "\n".join(extra) + "\n"
             body = text.encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
@@ -8260,6 +8283,13 @@ app_ctx = AppContext(config, ROOT_DIR, _stonesage_data_dir, tool_registry=tool_r
     "get_courage_agent": get_courage_agent,
     "get_trace_log": get_trace_log,
     "get_engine_lease": get_engine_lease,
+    "get_provenance": get_provenance,                 # an app's model catalogue reads the GGUF records
+    "add_phone_action_handler": _add_phone_action_handler,
+    "get_idle_gate": get_idle_gate,                   # an app that schedules heavy work (Grove) reads the gate and the lease
+    "last_courage_turn": _last_courage_turn,
+    "pending_approvals": _pending_approvals,
+    "lease_systemctl": _lease_systemctl,
+    "http_ok": _http_ok,
     "cluster": LiveRef(lambda: cluster),
     "_engine_lease": LiveRef(lambda: _engine_lease),   # None until a lease is first asked for
     "_on_loan": _on_loan,
@@ -8286,6 +8316,8 @@ agent_hub = AgentHub(_stonesage_data_dir, _agent_services(),
                      computer=get_courage_agent if _courage_agent_if_any() else None,
                      computer_built=lambda: _courage_agent)
 agent_api.install(app_ctx, agent_hub)
+from stonesage.apps import install_platform_routes  # noqa: E402
+install_platform_routes(app_ctx)    # GET /api/apps: the loaded apps and the tabs they bring
 from stonesage import ui_features  # noqa: E402
 ui_features.install(app_ctx, APP_VERSION, _stonesage_data_dir, boost_router=_boost_router)   # GET /api/ui/features: what the page may show
 

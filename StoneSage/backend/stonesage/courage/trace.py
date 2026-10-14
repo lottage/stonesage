@@ -12,6 +12,8 @@ metrics and escalation (plan Phase 6). One JSON line each in data/courage_trace.
   lease    engine_lease.py: acquire, refused (why), checkin, renew (approver, surface), release, expire, revert_failed
   escalation  courage/escalation.py: a failed turn's climb (reason, each rung's outcome, who answered, the local text
            and the higher answer), or a tool failing repeatedly (tool_failing)
+  garden   the garden client (homelab only): a garden session started or stopped from StoneSage (resident, model, session id, reason); outcome
+           started | stopped | refused | error. Never any of the resident's text.
   commentary  commentary.py: an unprompted remark (arrival / cooking / cleaning): room, who, facts, outcome spoken |
            logged | held (why) | failed, the remark, timings; triggers llm_error, empty_answer, speak_error
 
