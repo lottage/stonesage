@@ -288,5 +288,56 @@ class TestComputerLite(unittest.TestCase):
         self.assertEqual(told, [])
 
 
+
+class TestLeaseAndCockpit(unittest.TestCase):
+    def rig(self, cockpit=True):
+        r = Rig(stand_ins=LITE)
+        reason = "someone is using StoneSage (3 s ago)"
+
+        def gate():
+            g = {"open": not cockpit, "reasons": [], "open_ignoring_cockpit": True}
+            return {"gpus": {"RX 6750 XT": g, "RX 6600": dict(g)}, "shared_reasons": [reason] if cockpit else [],
+                    "cockpit": reason if cockpit else None}
+        r.lease.idle_check = gate
+        return r
+
+    def test_background_work_is_refused_while_a_person_is_on_the_page(self):
+        r = self.rig()
+        res = r.lease.acquire("longctx_6750", 3600, "garden", "garden-scheduler", yield_to_computer=True)
+        self.assertFalse(res["ok"])
+        self.assertIn("someone is using StoneSage", res["error"])
+
+    def test_a_lease_a_person_asks_for_ignores_that_he_is_on_the_page(self):
+        r = self.rig()
+        self.assertTrue(r.lease.acquire("longctx_6750", 3600, "long context", "owner")["ok"])
+
+    def test_the_flag_is_kept_and_reported_by_brain_and_yielding(self):
+        r = self.rig(cockpit=False)
+        res = r.lease.acquire("longctx_6750", 3600, "garden", "garden-scheduler", yield_to_computer=True)
+        self.assertTrue(res["ok"], res)
+        self.assertTrue(r.lease.brain("coordinator")["yield_to_computer"])
+        self.assertEqual(r.lease.yielding("coordinator")["id"], res["lease_id"])
+        self.assertIsNone(r.lease.yielding("vision"))             # this layout leaves vision alone
+        r.lease.lease["state"] = "revert_failed"
+        self.assertIsNone(r.lease.yielding("coordinator"))        # nothing left to take back
+        r.lease.lease["state"] = "active"
+        r.lease.release(res["lease_id"])
+        self.assertIsNone(r.lease.yielding("coordinator"))
+
+    def test_a_person_s_own_lease_is_not_yielding(self):
+        r = self.rig(cockpit=False)
+        r.lease.acquire("longctx_6750", 3600, "long context", "owner")
+        self.assertIsNone(r.lease.yielding("coordinator"))
+        self.assertFalse(r.lease.brain("coordinator")["yield_to_computer"])
+
+    def test_layout_info_says_whether_the_stand_in_is_ready(self):
+        r = Rig(stand_ins=LITE)
+        self.assertTrue(r.lease.layout_info("longctx_6750")["stand_in_ready"])
+        self.assertFalse(r.lease.layout_info("longctx_6600")["stand_in_ready"])
+        r2 = Rig(stand_ins={"courage_lite": dict(LITE["courage_lite"], eval_passed=None)})
+        self.assertFalse(r2.lease.layout_info("longctx_6750")["stand_in_ready"])
+        self.assertFalse(Rig().lease.layout_info("longctx_6750")["stand_in_ready"])
+
+
 if __name__ == "__main__":
     unittest.main()

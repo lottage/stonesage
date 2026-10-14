@@ -157,7 +157,7 @@ def _stream(h, agent, spec: AgentSpec, history, sid: str, cid: str, created: int
 
     write(_chunk(cid, created, spec.id, {"role": "assistant", "content": ""}))
     try:
-        for ev in streamed(agent.run(history, sid)):
+        for ev in streamed(agent.run(history, sid), holding=True):
             if ev["type"] in ("partial", "final") and ev.get("content"):
                 write(_chunk(cid, created, spec.id, {"content": ev["content"]}))
         write(_chunk(cid, created, spec.id, {}, "stop"))

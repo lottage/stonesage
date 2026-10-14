@@ -2375,6 +2375,11 @@ _courage_lock = threading.Lock()
 
 _engine_lease = None
 
+# Is a person using the cockpit? (stonesage/activity.py) The idle gate reads it; the takeback listens to it.
+from stonesage.activity import CockpitActivity  # noqa: E402
+_cockpit_activity = CockpitActivity(lambda: config)
+_takeback = None
+
 
 def _lease_systemctl(verb: str, unit: str) -> Dict[str, Any]:
     import shlex
@@ -2517,8 +2522,26 @@ def get_idle_gate():
         _idle_gate = IdleGate(load_config, lambda: system_profile.get_profile(load_config()), _prom_query,
                               lambda: (app_ctx.hook("household") or (lambda: {"quiet": True, "reasons": []}))(),
                               lambda: (_courage_agent_if_any() and get_courage_agent().pending.count()) or 0,
-                              _last_courage_turn)
+                              _last_courage_turn, activity_fn=_cockpit_activity.reason)
     return _idle_gate
+
+
+def _coordinator_ready() -> bool:
+    """The real coordinator answers /health (a lease has just handed it back)."""
+    base = re.sub(r"/v1/?$", "", endpoints.url("coordinator", config).rstrip("/"))
+    return _http_ok(base + "/health")
+
+
+def get_takeback():
+    """Computer takes a borrowed GPU back from background work on demand (stonesage/courage/takeback.py)."""
+    global _takeback
+    if _takeback is None:
+        from stonesage.courage.takeback import Takeback
+        _takeback = Takeback(load_config, lambda: _engine_lease, _coordinator_ready, trace=get_trace_log().write,
+                             push=lambda title, message: _escalation_push(title, message),
+                             path=os.path.join(_stonesage_data_dir(), "takeback.json"))
+        _cockpit_activity.listeners.append(_takeback.on_cockpit_activity)
+    return _takeback
 
 
 _trace_log = None
@@ -2729,6 +2752,7 @@ def get_courage_agent():
             from stonesage.courage.escalation import Escalation
             watch_obj, project = getattr(_courage_agent, "watch", None), (config.get("watch_bridge") or {}).get("project", "stonesage")
             _courage_agent.brain = lambda: _engine_lease.brain("coordinator") if _engine_lease else None   # lite / on loan
+            _courage_agent.takeback = get_takeback()     # a borrowed coordinator comes back when the spare brain cannot do the job
             if _courage_agent.push and _engine_lease and _engine_lease.handle_action not in _courage_agent.push.extra_handlers:
                 _courage_agent.push.extra_handlers.append(_engine_lease.handle_action)   # Another hour / Stop
             for _handler in _phone_action_handlers:
@@ -2851,8 +2875,14 @@ class StoneSageHandler(http.server.SimpleHTTPRequestHandler):
 
     def _gate(self, method: str) -> bool:
         """The one chokepoint (stonesage/auth.py): True = go on, False = already answered (401, 403, 404 for a feature that is off...)."""
-        return auth.gate(self, method, config, routes=app_ctx.routes, frontend_dir=FRONTEND_DIR,
-                         is_apk=lambda p: is_apk_request(p, p.strip().rstrip("/")))
+        ok = auth.gate(self, method, config, routes=app_ctx.routes, frontend_dir=FRONTEND_DIR,
+                       is_apk=lambda p: is_apk_request(p, p.strip().rstrip("/")))
+        if ok:
+            try:
+                _cockpit_activity.observe(self, method)      # a signed-in page request that changes something = a person at the cockpit
+            except Exception:
+                pass
+        return ok
 
     def _approval_key(self, client_id=None) -> str:
         """Where a pending approval lives: this caller + the id it chose (a reserved or missing id becomes its address)."""
@@ -3025,7 +3055,7 @@ class StoneSageHandler(http.server.SimpleHTTPRequestHandler):
         # A long reply goes out sentence by sentence as it is written, so HA's voice pipeline starts speaking sooner
         answer, got_final = "", False
         try:
-            for ev in streamed(get_courage_agent().run(history, f"ha:{self.client_address[0]}")):
+            for ev in streamed(get_courage_agent().run(history, f"ha:{self.client_address[0]}"), holding=bool(stream)):
                 if ev["type"] in ("partial", "final"):
                     got_final = got_final or ev["type"] == "final"
                     piece = say(ev["content"])
@@ -3568,6 +3598,10 @@ class StoneSageHandler(http.server.SimpleHTTPRequestHandler):
                 text = text.rstrip("\n") + "\n" + "\n".join(get_idle_gate().metrics()) + "\n"
             except Exception as e:
                 logger.warning(f"idle gate metrics: {e}")
+            try:
+                text = text.rstrip("\n") + "\n" + "\n".join(_cockpit_activity.metrics() + get_takeback().metrics()) + "\n"
+            except Exception as e:
+                logger.warning(f"takeback metrics: {e}")
             extra = app_ctx.metrics_lines()     # whatever the loaded apps measure (apps.py add_metrics)
             if extra:
                 text = text.rstrip("\n") + "\n" + "\n".join(extra) + "\n"
@@ -8286,6 +8320,9 @@ app_ctx = AppContext(config, ROOT_DIR, _stonesage_data_dir, tool_registry=tool_r
     "get_provenance": get_provenance,                 # an app's model catalogue reads the GGUF records
     "add_phone_action_handler": _add_phone_action_handler,
     "get_idle_gate": get_idle_gate,                   # an app that schedules heavy work (Grove) reads the gate and the lease
+    "register_yielder": lambda fn: get_takeback().register_yielder(fn),   # ... and tells the takeback how to stop its work
+    "takeback_cooldown": lambda: get_takeback().cooldown_left(),
+    "takeback_status": lambda: get_takeback().status(),
     "last_courage_turn": _last_courage_turn,
     "pending_approvals": _pending_approvals,
     "lease_systemctl": _lease_systemctl,
@@ -8316,6 +8353,8 @@ agent_hub = AgentHub(_stonesage_data_dir, _agent_services(),
                      computer=get_courage_agent if _courage_agent_if_any() else None,
                      computer_built=lambda: _courage_agent)
 agent_api.install(app_ctx, agent_hub)
+from stonesage import activity as _activity_routes  # noqa: E402
+_activity_routes.install(app_ctx, _cockpit_activity)    # POST /api/activity/heartbeat, GET /api/activity/status
 from stonesage.apps import install_platform_routes  # noqa: E402
 install_platform_routes(app_ctx)    # GET /api/apps: the loaded apps and the tabs they bring
 from stonesage import ui_features  # noqa: E402

@@ -12,6 +12,9 @@ metrics and escalation (plan Phase 6). One JSON line each in data/courage_trace.
   lease    engine_lease.py: acquire, refused (why), checkin, renew (approver, surface), release, expire, revert_failed
   escalation  courage/escalation.py: a failed turn's climb (reason, each rung's outcome, who answered, the local text
            and the higher answer), or a tool failing repeatedly (tool_failing)
+  takeback  courage/takeback.py: Computer took a borrowed coordinator back from the garden: why (tool | step_cap | llm_error |
+           empty_answer | on_loan | cockpit), tool, source (request | cockpit), outcome ok | takeback_failed, coordinator_ms
+           (until it answered), user_wait_ms (the whole request; None for a cockpit takeback), lease, layout
   garden   the garden client (homelab only): a garden session started or stopped from StoneSage (resident, model, session id, reason); outcome
            started | stopped | refused | error. Never any of the resident's text.
   commentary  commentary.py: an unprompted remark (arrival / cooking / cleaning): room, who, facts, outcome spoken |
@@ -23,7 +26,8 @@ A Courage turn:
   triggers [...]
 
 path     how the turn was handled: reflex | learned | approval_yes | approval_no | loop
-outcome  answered | asked_approval | step_cap | llm_error | error | abandoned (client went away mid-turn)
+outcome  answered | asked_approval | step_cap | llm_error | error | abandoned (client went away mid-turn) | takeback
+         (a spare-brain turn handed back to the full Computer; the same request then has its own record)
 steps    each model call ({"llm": ms, "tokens", "calls": n}) and tool call ({"tool", "args", "ok", "ms", "error"})
 triggers the objective escalation signals of the stack-limits review, RECORDED ONLY (nothing acts on them yet):
          tool_error, invalid_args, repeated_call (same tool + arguments twice in a turn), nudged (the model described

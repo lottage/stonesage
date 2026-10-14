@@ -20,6 +20,7 @@ const STATIC_ASSETS = [
   '/vendor/ace/ext-searchbox.js',
   '/js/app.js',
   '/js/net.js',
+  '/js/activity.js',
   '/js/features.js',
   '/js/app.js?v=4.0.4',
   '/js/state.js',

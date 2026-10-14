@@ -15,6 +15,7 @@ import re
 import socket
 import threading
 import time
+import urllib.error
 import urllib.request
 import uuid
 from datetime import datetime
@@ -38,6 +39,11 @@ AFFIRM = re.compile(r"^\s*(yes|yeah|yep|yup|y|ok|okay|sure|do it|go ahead|go for
 DENY = re.compile(r"^\s*(no|nope|nah|cancel|don'?t|do not|stop|never ?mind|leave it)\b", re.I)
 TOOL_MARKUP = re.compile(r":::(TOOL_CALL|TOOL_RESULT|APPROVAL):::.*?:::END_(TOOL_CALL|TOOL_RESULT|APPROVAL):::", re.S)
 THINK = re.compile(r"<think>.*?</think>", re.S)
+# llama.cpp answers HTTP 500 with this when it cannot parse the model's own tool-call JSON (a raw newline in a string, usually).
+# The retry asks again with parse_tool_calls false and reads the calls out of the text. Mirrors grove/session.py (Grove must not
+# be imported here, and this must not import Grove): keep the two in step.
+PARSE_FAILURE = "Failed to parse tool call"
+TEXT_CALL = re.compile(r"<tool_call>\s*(.*?)\s*</tool_call>", re.S)
 # "I'll check the cameras", "let me look", "one moment": a promise to use a tool without calling it
 PROMISE = re.compile(r"\b(i'?ll|i will|let me|going to|one moment|checking|(would you like|do you want|want) me to)\b.{0,40}"
                      r"\b(check|look|see|find|search|scan|increase|adjust|set|turn)"
@@ -114,12 +120,18 @@ def plain_text(text: str) -> str:
     return re.sub(r"^[ \t]*[-*][ \t]+", "", text, flags=re.M)
 
 
-def streamed(events: Iterator[Dict[str, Any]]) -> Iterator[Dict[str, Any]]:
+def streamed(events: Iterator[Dict[str, Any]], holding: bool = False) -> Iterator[Dict[str, Any]]:
     """run()'s events for a client that shows or speaks 'partial' text as it comes: the final event then carries only
     the rest of the answer (its full text is under 'full'). An answer that does not continue what was streamed (a
-    step cap or a lost model after a streamed preamble) follows it as a new paragraph."""
+    step cap or a lost model after a streamed preamble) follows it as a new paragraph.
+    'holding' events (the takeback's "One moment." while the full brain comes back) become partials when `holding` is
+    true (a stream a person watches or hears); otherwise they are dropped (Alexa's one-shot answer, a non-streaming reply)."""
     sent = ""
     for ev in events:
+        if ev["type"] == "holding":
+            if not holding:
+                continue
+            ev = {"type": "partial", "content": ev["content"]}
         if ev["type"] == "partial":
             sent += ev["content"]
         elif ev["type"] == "final" and sent:
@@ -221,6 +233,48 @@ def _http_stream_json(url: str, body: Dict[str, Any], timeout: float) -> Iterato
 SENTENCE_END = re.compile(r"[.!?…:;][\"')\]*_]*(?=\s+\S)|\S(?=[ \t]*\n+\s*\S)")
 
 
+def is_parse_failure(e: BaseException) -> bool:
+    """An HTTP error whose body says the engine could not parse the model's tool-call JSON. The body is read here (once)."""
+    if not isinstance(e, urllib.error.HTTPError) or e.code != 500:
+        return False
+    try:
+        detail = e.read(4096).decode("utf-8", "replace")
+    except (OSError, AttributeError):
+        return False
+    return PARSE_FAILURE in detail
+
+
+def parse_text_calls(text: str, id_prefix: str = "text") -> Tuple[List[Dict[str, Any]], str]:
+    """Tool calls written in a reply's text, for a model whose engine would not parse them: `<tool_call>{"name": ..., "arguments":
+    {...}}</tool_call>` blocks, or else a whole reply that is one JSON object with a name. Raw newlines and control characters in
+    strings are accepted (strict=False). -> (tool calls in the chat shape, the text without the blocks). Nothing parsed -> ([], text):
+    the caller keeps the text as the answer."""
+    blocks = [m.group(1) for m in TEXT_CALL.finditer(text or "")]
+    if not blocks and (text or "").strip().startswith("{"):
+        blocks = [text.strip()]
+    calls: List[Dict[str, Any]] = []
+    for raw in blocks:
+        try:
+            obj = json.loads(raw, strict=False)
+        except ValueError:
+            continue
+        if not isinstance(obj, dict) or not isinstance(obj.get("name"), str) or not obj["name"]:
+            continue
+        args = obj.get("arguments", obj.get("parameters", {}))
+        if isinstance(args, str):
+            try:
+                args = json.loads(args, strict=False)
+            except ValueError:
+                args = None
+        args_text = json.dumps(args if isinstance(args, dict) else {}, ensure_ascii=False)
+        calls.append({"id": "%s-%d" % (id_prefix, len(calls) + 1), "type": "function",
+                      "function": {"name": obj["name"], "arguments": args_text}})
+    if not calls:
+        return [], text
+    rest = TEXT_CALL.sub("", text).strip() if TEXT_CALL.search(text) else ""
+    return calls, rest
+
+
 def _release_point(text: str, start: int) -> int:
     """Where the finished sentences in text[start:] end (just after the punctuation), or start if none has."""
     cut = start
@@ -262,6 +316,9 @@ class CourageAgent:
         self.escalation = None  # courage/escalation.py Escalation: the ladder a failed turn climbs (Phase 6)
         # engine lease (engine_lease.EngineLease.brain): None | {"mode": "lite", url, until} | {"mode": "on_loan", until}
         self.brain: Optional[Callable[[], Optional[Dict[str, Any]]]] = None
+        # courage/takeback.py Takeback: when a background lease (the garden) holds the coordinator's GPU and the spare brain
+        # cannot do the job, give the GPU back and answer the same request on the full brain. None = never.
+        self.takeback = None
         self.pending = pending or PendingActions()
         self.max_steps = max_steps
         self.timeout = timeout
@@ -283,14 +340,15 @@ class CourageAgent:
 
     # ---- model call ----------------------------------------------------------
     def _complete(self, messages: List[Dict[str, Any]], url: Optional[str] = None,
-                  max_tokens: Optional[int] = None) -> Dict[str, Any]:
-        """url / max_tokens: a lite turn sends these to the stand-in instead (engine lease)."""
-        data = self.post(url or self.url, self._body(messages, max_tokens), self.timeout)
+                  max_tokens: Optional[int] = None, parse_tools: bool = True) -> Dict[str, Any]:
+        """url / max_tokens: a lite turn sends these to the stand-in instead (engine lease). parse_tools False: the engine
+        leaves the tool-call JSON alone and the caller reads it from the text (see _model_turn)."""
+        data = self.post(url or self.url, self._body(messages, max_tokens, parse_tools), self.timeout)
         msg = (data.get("choices") or [{}])[0].get("message") or {}
         msg["_gen"] = self._gen(data.get("timings"), data.get("usage"))
         return msg
 
-    def _body(self, messages: List[Dict[str, Any]], max_tokens: Optional[int]) -> Dict[str, Any]:
+    def _body(self, messages: List[Dict[str, Any]], max_tokens: Optional[int], parse_tools: bool = True) -> Dict[str, Any]:
         body = {
             "model": self.model,
             "messages": messages,
@@ -301,6 +359,8 @@ class CourageAgent:
         }
         if not body["tools"]:
             del body["tools"]       # an agent with no tools offers none (an empty list is not sent)
+        if not parse_tools:
+            body["parse_tool_calls"] = False
         return body
 
     @staticmethod
@@ -339,6 +399,22 @@ class CourageAgent:
         msg = {"role": "assistant", "content": raw, "_gen": self._gen(timings, usage), "_sent": raw.lstrip()[:sent]}
         if calls:
             msg["tool_calls"] = [dict(c, id=c["id"] or f"call_{uuid.uuid4().hex[:8]}") for _, c in sorted(calls.items())]
+        return msg
+
+    def _model_turn(self, messages: List[Dict[str, Any]], url: Optional[str] = None, max_tokens: Optional[int] = None,
+                    lead: str = ""):
+        """_step, with one recovery: when the engine answers 500 because it could not parse the model's tool-call JSON, the same
+        request goes again with the engine's parsing off, and the tool calls are read from the reply's text. Nothing parseable
+        there -> the text is the answer. Any other failure is raised as before."""
+        try:
+            return (yield from self._step(messages, url, max_tokens, lead=lead))
+        except urllib.error.HTTPError as e:
+            if not is_parse_failure(e):
+                raise
+        msg = self._complete(messages, url, max_tokens, parse_tools=False)
+        calls, rest = parse_text_calls(msg.get("content") or "", "text-retry")
+        if calls:
+            msg = dict(msg, content=rest, tool_calls=calls)
         return msg
 
     # ---- conversation shaping ------------------------------------------------
@@ -501,19 +577,34 @@ class CourageAgent:
     # ---- the loop ------------------------------------------------------------
     def run(self, history: List[Dict[str, Any]], session_id: str = "default") -> Iterator[Dict[str, Any]]:
         """Events: tool_call, tool_result, approval_required, partial (finished sentences of a long reply, as they are
-        written), then usage (tokens generated, tok/s) and final (the whole answer; see streamed()).
-        Each turn is recorded in self.trace_log (courage/trace.py) when it ends, however it ends."""
+        written), holding (the takeback's "One moment."; see streamed()), then usage (tokens generated, tok/s) and final
+        (the whole answer; see streamed()). Each turn is recorded in self.trace_log (courage/trace.py) when it ends, however
+        it ends. With a takeback set, a turn on the spare brain of a borrowed GPU may be answered again on the full one."""
+        if self.takeback is not None:
+            yield from self.takeback.run(self, history, session_id)
+        else:
+            yield from self._turn(history, session_id)
+
+    def _turn(self, history: List[Dict[str, Any]], session_id: str = "default", full: bool = False,
+              probe: bool = False) -> Iterator[Dict[str, Any]]:
+        """One turn. full: answer on the real coordinator even if a lease has lent it out (the takeback has just given it back).
+        probe: this turn runs on the spare brain of a lease that can be taken back; it never climbs the escalation ladder, and
+        instead of answering a request the spare brain cannot do it yields 'takeback_request', or a final marked 'failed'."""
         gen = [0, 0.0]
         last_user = next((m["content"] for m in reversed(history) if m.get("role") == "user"), "")
         tr = TurnTrace(session_id, last_user if isinstance(last_user, str) else "")
         # only a house agent (Computer) speaks its replies: an agent without a home (Atlas) keeps markdown, code fences included
         speak = plain_text if self.home_context else (lambda t: t)
         try:
-            for ev in self._run(history, session_id, gen, tr):
+            for ev in self._run(history, session_id, gen, tr, full=full, probe=probe):
                 if ev["type"] == "partial":
                     ev = dict(ev, content=speak(ev.get("content") or ""))
                 if ev["type"] == "final":
-                    ev = self._escalate(ev, tr, session_id)
+                    why = (failed(tr.outcome, tr.triggers) or ("llm_error" if "lite_down" in tr.triggers else None)) if probe else None
+                    if why:
+                        ev = dict(ev, failed=why)          # the takeback decides what happens to a failed spare-brain turn
+                    else:
+                        ev = self._escalate(ev, tr, session_id)
                     ev = dict(ev, content=speak(ev.get("content") or ""))   # no markdown: it is spoken aloud too
                     tr.end("answered", ev.get("content") or "")
                     if gen[0]:
@@ -557,7 +648,9 @@ class CourageAgent:
                 and len((tr.user or "").strip()) >= LEARN_MIN_CHARS)
 
     def _run(self, history: List[Dict[str, Any]], session_id: str, gen: List[float],
-             tr: TurnTrace) -> Iterator[Dict[str, Any]]:
+             tr: TurnTrace, full: bool = False, probe: bool = False) -> Iterator[Dict[str, Any]]:
+        if full:
+            tr.trigger("takeback_rerun")
         last_user = next((m["content"] for m in reversed(history) if m.get("role") == "user"), "")
         messages = self._build_messages(history, self._recall(last_user, tr))
         tr.context = messages          # the escalation ladder reads this turn's tool calls and results from it
@@ -592,8 +685,13 @@ class CourageAgent:
             if handled:
                 return
 
-        brain = self.brain() if self.brain else None     # engine lease (engine_lease.py): who answers for :8001 now
+        brain = self.brain() if (self.brain and not full) else None     # engine lease (engine_lease.py): who answers for :8001 now
         until = clock(datetime.fromtimestamp(brain["until"])) if brain else ""
+        if probe and brain and brain.get("mode") == "on_loan":   # nothing answers on a lease the garden can give back: give it back
+            tr.trigger("takeback_on_loan")
+            tr.end("takeback")
+            yield {"type": "takeback_request", "why": "on_loan"}
+            return
         if brain and brain.get("mode") == "on_loan":   # lent out, no stand-in: say so plainly (not a failure)
             text = (f"Done. The big brain's on loan until {until}, so that's all I can say for now."
                     if tr.path == "approval_yes" else
@@ -617,13 +715,14 @@ class CourageAgent:
             t_llm = time.time()
             prior = said
             try:
-                msg = yield from self._step(messages, lead="\n\n" if prior else "", **llm)
+                msg = yield from self._model_turn(messages, lead="\n\n" if prior else "", **llm)
                 if msg.get("_sent"):
                     said = prior + ("\n\n" if prior else "") + msg["_sent"]
                 gen[0] += msg["_gen"][0]
                 gen[1] += msg["_gen"][1]
             except Exception as e:
                 if lite:   # the stand-in failed too: an honest answer, not a ladder climb (the lease is the cause)
+                    tr.trigger("lite_down")      # a takeback treats this as a failed turn (llm_error)
                     text = f"The big brain's on loan until {until} and the spare one isn't answering either. Try me then."
                     tr.end("on_loan", text)
                     yield {"type": "final", "content": text}
@@ -661,6 +760,15 @@ class CourageAgent:
                 yield {"type": "final", "content": text or "I have nothing useful to add, which is rare."}
                 return
 
+            if probe and lite and self.takeback is not None:
+                # decide BEFORE running anything: a request the spare brain picked a camera / think_harder tool for needs the full one
+                wanted = next(((call.get("function") or {}).get("name", "") for call in calls
+                               if self.takeback.wants_full((call.get("function") or {}).get("name", ""))), None)
+                if wanted:
+                    tr.trigger("takeback_tool")
+                    tr.end("takeback")
+                    yield {"type": "takeback_request", "why": "tool", "tool": wanted}
+                    return
             messages.append({"role": "assistant", "content": msg.get("content") or "", "tool_calls": calls})
             for i, call in enumerate(calls):
                 fn = call.get("function") or {}
@@ -729,7 +837,7 @@ class CourageAgent:
                           "choices": [{"index": 0, "delta": {"content": text}, "finish_reason": None}]})
 
         usage = None
-        for ev in streamed(self.run(history, session_id)):
+        for ev in streamed(self.run(history, session_id), holding=True):
             if ev["type"] == "usage":
                 usage = {"completion_tokens": ev["completion_tokens"], "tps": ev["tps"]}
             elif ev["type"] in ("partial", "final"):
