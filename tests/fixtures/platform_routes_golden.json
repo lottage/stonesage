@@ -626,6 +626,9 @@
   "keys": [
    "checked_at",
    "cockpit",
+   "demand_open",
+   "demand_shared_reasons",
+   "gate_version",
    "gpus",
    "household",
    "ok",

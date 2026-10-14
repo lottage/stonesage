@@ -32,7 +32,7 @@ from .trace import TraceLog, TurnTrace
 # A turn that switched something, notified or announced was a command: nothing to learn. Any other answered turn goes
 # to the extractor, which skips device states itself (2026-09-26: "my sister Emma is allergic to cats" made Courage
 # check where the cats were, and a "no home tools" rule then threw the fact away).
-ACTION_TOOLS = {"ha_call", "notify", "speak"}
+ACTION_TOOLS = {"ha_call", "notify", "speak", "run_scene"}
 LEARN_MIN_CHARS = 12   # "hi", "thanks": nothing to remember
 
 AFFIRM = re.compile(r"^\s*(yes|yeah|yep|yup|y|ok|okay|sure|do it|go ahead|go for it|approved?|confirm(ed)?|please do)\b", re.I)
@@ -620,6 +620,10 @@ class CourageAgent:
             else:
                 tr.path = "loop"
             return handled
+        scene = self._scene_reflex(text, tr)
+        if scene is not None:
+            handled = yield from scene
+            return handled
         found = self.reflex_resolve(text, self.tools.deps.ha_states) if self.reflex_resolve else None
         if not found:
             return False
@@ -630,6 +634,35 @@ class CourageAgent:
         if not handled:
             tr.path = "loop"
         return handled
+
+    def _scene_reflex(self, text: str, tr: TurnTrace):
+        """A sentence that is exactly a scene's phrase ("movie night") runs the scene without the model (it is an outright order).
+        None when the sentence names no scene."""
+        deps = self.tools.deps
+        if deps.run_scene is None or is_question(text):
+            return None
+        try:
+            name = deps.scene_match(text)
+        except Exception:
+            name = None
+        if not name or self.tools.validate("run_scene", {"name": name}):
+            return None
+        return self._run_scene_reflex(name, tr)
+
+    def _run_scene_reflex(self, name: str, tr: TurnTrace):
+        args = {"name": name}
+        tr.path = "reflex"
+        yield {"type": "tool_call", "name": "run_scene", "arguments": args, "status": self.tools.status_text("run_scene", args)}
+        tr.tool_started()
+        result = self.tools.execute("run_scene", args)
+        tr.tool("run_scene", args, result)
+        yield {"type": "tool_result", "name": "run_scene", "result": result}
+        try:
+            summary = json.loads(result).get("summary")
+        except (TypeError, ValueError):
+            summary = None
+        yield {"type": "final", "content": summary or f"I couldn't set up {name.replace('_', ' ')}."}
+        return True
 
     def _switch(self, args: Dict[str, Any], name: str, state: Optional[str], current: Optional[str], tr: TurnTrace):
         if self.tools.validate("ha_call", args):
@@ -891,6 +924,13 @@ class CourageAgent:
                     yield {"type": "final", "content": text}
                     return
 
+                if self.takeback is not None and self.takeback.wants_vision(name):
+                    # a camera tool while the garden holds the vision card (the RX 6600 lease): hot-load. "One moment.", the garden
+                    # stops, the lease goes back, and this SAME tool call then runs on the real vision server
+                    from .takeback import FILLER
+                    tr.trigger("vision_hotload")
+                    yield {"type": "holding", "content": FILLER}
+                    self.takeback.hot_load(why="tool", tool=name, source="request")
                 yield {"type": "tool_call", "name": name, "arguments": args, "status": self.tools.status_text(name, args)}
                 tr.tool_started()
                 result = self.tools.execute(name, args)

@@ -112,6 +112,11 @@ class CourageDeps:
     # question, kind -> {"ok", "answer", "source"}; None = Boost off for Courage (the tool is not offered at all)
     think_harder: Optional[Callable[[str, str], Dict[str, Any]]] = None
     think_harder_available: Callable[[], bool] = field(default=lambda: True)  # the Boost toggle, read per turn
+    # scenes (the Home app): name, plan_only -> {"ok", "summary", ...}; the names it knows; the scene an exact sentence names.
+    # None = the home has no scenes (the tool is not offered)
+    run_scene: Optional[Callable[[str, bool], Dict[str, Any]]] = None
+    scene_names: Callable[[], List[str]] = field(default=lambda: [])
+    scene_match: Callable[[str], Optional[str]] = field(default=lambda text: None)
     # who and what the home has (cameras, people, pets, phones, speakers): supplied by the Home app; empty = no home
     household: Household = field(default_factory=Household)
 
@@ -213,6 +218,16 @@ class CourageTools:
             "handler": self._correct_sighting, "approval": True,
             "status": "Correcting {who}'s sighting…",
         }
+        if deps.run_scene is not None:
+            self.specs["run_scene"] = {
+                "description": "Set up one of the home's scenes (movie night, bedtime...). It checks the room, changes only what is "
+                               "not already right, verifies, and returns a short summary to repeat (including anything offline). "
+                               "Use it for a scene by name instead of switching each device yourself. Runs at once only when the "
+                               "user named the scene; otherwise the owner approves first.",
+                "parameters": _schema({"name": {"type": "string", "description": "scene name, e.g. " + (", ".join(deps.scene_names()[:6]) or "movie_night")}}, ["name"]),
+                "handler": self._run_scene, "approval": True,
+                "status": "Setting up {name}…",
+            }
         if deps.think_harder is not None:
             self.specs["think_harder"] = {
                 "description": "Ask a much larger model for help with a hard question: reasoning, maths, science, coding or "
@@ -266,6 +281,8 @@ class CourageTools:
             if entity is None and candidates is not None:
                 hint = f" Closest: {', '.join(candidates)}." if candidates else f" Call ha_get_states for {domain} to find it."
                 return f"no entity '{eid}' in Home Assistant.{hint}"
+        if name == "run_scene" and args.get("name") not in self.deps.scene_names():
+            return f"no scene called '{args.get('name')}'. Scenes: {', '.join(self.deps.scene_names()) or 'none'}"
         if name == "correct_sighting":
             if args.get("action") not in ("is_really", "wrong"):
                 return "action must be is_really or wrong"
@@ -306,6 +323,8 @@ class CourageTools:
                 return f"switch the {label} to {data['hvac_mode']}"
             extra = f" ({', '.join(f'{k} {v}' for k, v in args['data'].items())})" if args.get("data") else ""
             return f"{args.get('service', '').replace('_', ' ')} the {label}{extra}"
+        if name == "run_scene":
+            return f"set up {str(args.get('name', '')).replace('_', ' ')}"
         if name == "notify":
             return f"notify {args.get('target') or self._default_phone()}: \"{args.get('message', '')}\""
         if name == "speak":
@@ -326,6 +345,9 @@ class CourageTools:
         text = (user_text or "").lower()
         if is_question(text):
             return False
+        if name == "run_scene":
+            # a scene named outright is an order; one Computer merely thought of ("I want to watch a movie") asks first
+            return bool(self.deps.scene_names()) and self.deps.scene_match(user_text or "") == args.get("name")
         if name == "ha_call":
             service = args.get("service", "")
             if always_confirm(args.get("domain", ""), service, args.get("entity_id", "")):
@@ -438,6 +460,14 @@ class CourageTools:
         if not last or self.clock() - last[1] > RECENT_COMMAND_S:
             return False
         return last[0] != wanted_state
+
+    def _run_scene(self, name: str) -> Dict[str, Any]:
+        res = self.deps.run_scene(name, False) or {}
+        out = {"ok": bool(res.get("ok")), "summary": res.get("summary") or res.get("error") or "scene failed"}
+        if res.get("items"):
+            out["problems"] = [f"{i['label']}: {i.get('result') or i['action']}" for i in res["items"]
+                               if i.get("result") in ("offline", "failed", "didnt_take") or i["action"] == "offline"]
+        return out
 
     def _correct_sighting(self, who: str, action: str, name: str = "") -> Dict[str, Any]:
         return self.deps.correct_sighting(who, action, name)

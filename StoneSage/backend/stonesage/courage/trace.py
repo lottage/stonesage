@@ -12,8 +12,11 @@ metrics and escalation (plan Phase 6). One JSON line each in data/courage_trace.
   lease    engine_lease.py: acquire, refused (why), checkin, renew (approver, surface), release, expire, revert_failed
   escalation  courage/escalation.py: a failed turn's climb (reason, each rung's outcome, who answered, the local text
            and the higher answer), or a tool failing repeatedly (tool_failing)
+  vision_queue  stonesage/vision_queue.py: a frame kept while vision is lent out: event (queued | processed | delivered_late |
+           dropped_age | dropped_cap | failed), source (patrol | commentary | box | sentry), camera, item, queue_age_s, ms
   takeback  courage/takeback.py: Computer took a borrowed coordinator back from the garden: why (tool | step_cap | llm_error |
-           empty_answer | on_loan | cockpit), tool, source (request | cockpit), outcome ok | takeback_failed, coordinator_ms
+           empty_answer | on_loan | cockpit | sweep), card/resource (coordinator | vision: a camera request hot-loading the
+           RX 6600 lease), tool, source (request | cockpit | sweep), outcome ok | takeback_failed, coordinator_ms
            (until it answered), user_wait_ms (the whole request; None for a cockpit takeback), lease, layout
   garden   the garden client (homelab only): a garden session started or stopped from StoneSage (resident, model, session id, reason); outcome
            started | stopped | refused | error. Never any of the resident's text.

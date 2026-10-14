@@ -2532,6 +2532,38 @@ def _coordinator_ready() -> bool:
     return _http_ok(base + "/health")
 
 
+def _vision_ready() -> bool:
+    """The vision server answers /health and no engine lease has it lent out (the garden's RX 6600 lease is gone)."""
+    base = re.sub(r"/v1/?$", "", endpoints.url("vision", config).rstrip("/"))
+    return _on_loan("vision") is None and _http_ok(base + "/health")
+
+
+def _vision_call(jpeg: bytes, prompt: str, max_tokens: int = 80, temperature: float = 0.1) -> str:
+    """One read of a (queued) frame by the vision model: plain text back. Raises when the engine fails."""
+    import base64
+    base = endpoints.url("vision", config).rstrip("/")
+    url = base if base.endswith("/chat/completions") else base + "/chat/completions"
+    payload = {"model": "vision", "max_tokens": int(max_tokens), "temperature": float(temperature), "messages": [{"role": "user", "content": [
+        {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + base64.b64encode(jpeg).decode()}},
+        {"type": "text", "text": prompt}]}]}
+    req = urllib.request.Request(url, data=json.dumps(payload).encode(), headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=75) as r:
+        return json.load(r)["choices"][0]["message"]["content"] or ""
+
+
+_vision_queue = None
+
+
+def get_vision_queue():
+    """Frames that needed the vision model while it was lent out wait here (stonesage/vision_queue.py); apps register their handlers."""
+    global _vision_queue
+    if _vision_queue is None:
+        from stonesage.vision_queue import VisionQueue
+        _vision_queue = VisionQueue(load_config, _vision_call, _vision_ready, trace=get_trace_log().write,
+                                    data_dir=os.path.join(_stonesage_data_dir(), "vision_queue"))
+    return _vision_queue
+
+
 def get_takeback():
     """Computer takes a borrowed GPU back from background work on demand (stonesage/courage/takeback.py)."""
     global _takeback
@@ -2539,7 +2571,8 @@ def get_takeback():
         from stonesage.courage.takeback import Takeback
         _takeback = Takeback(load_config, lambda: _engine_lease, _coordinator_ready, trace=get_trace_log().write,
                              push=lambda title, message: _escalation_push(title, message),
-                             path=os.path.join(_stonesage_data_dir(), "takeback.json"))
+                             path=os.path.join(_stonesage_data_dir(), "takeback.json"),
+                             vision_ready=_vision_ready, on_vision_back=lambda: get_vision_queue().kick())
         _cockpit_activity.listeners.append(_takeback.on_cockpit_activity)
     return _takeback
 
@@ -3602,6 +3635,10 @@ class StoneSageHandler(http.server.SimpleHTTPRequestHandler):
                 text = text.rstrip("\n") + "\n" + "\n".join(_cockpit_activity.metrics() + get_takeback().metrics()) + "\n"
             except Exception as e:
                 logger.warning(f"takeback metrics: {e}")
+            try:
+                text = text.rstrip("\n") + "\n" + "\n".join(get_vision_queue().metrics()) + "\n"
+            except Exception as e:
+                logger.warning(f"vision queue metrics: {e}")
             extra = app_ctx.metrics_lines()     # whatever the loaded apps measure (apps.py add_metrics)
             if extra:
                 text = text.rstrip("\n") + "\n" + "\n".join(extra) + "\n"
@@ -8321,7 +8358,9 @@ app_ctx = AppContext(config, ROOT_DIR, _stonesage_data_dir, tool_registry=tool_r
     "add_phone_action_handler": _add_phone_action_handler,
     "get_idle_gate": get_idle_gate,                   # an app that schedules heavy work (Grove) reads the gate and the lease
     "register_yielder": lambda fn: get_takeback().register_yielder(fn),   # ... and tells the takeback how to stop its work
-    "takeback_cooldown": lambda: get_takeback().cooldown_left(),
+    "takeback_cooldown": lambda role="coordinator": get_takeback().cooldown_left(role),
+    "get_vision_queue": get_vision_queue,             # frames that wait for the vision engine while the garden holds it
+    "hot_load_vision": lambda why="tool", tool=None, source="request": get_takeback().hot_load(why=why, tool=tool, source=source),
     "takeback_status": lambda: get_takeback().status(),
     "last_courage_turn": _last_courage_turn,
     "pending_approvals": _pending_approvals,
@@ -8419,6 +8458,7 @@ if __name__ == "__main__":
         get_engine_lease().start()  # reverts a lease a previous run left behind, then watches the clock
     if config.get("provenance"):
         get_provenance().start()  # model provenance: header scan now, hashing rescans (backend/provenance.py)
+    get_vision_queue().start()  # reads the frames that waited for the vision engine, once it is back (stonesage/vision_queue.py)
     app_ctx.start()  # whatever the loaded apps asked to start (apps.py)
     get_backup_service().start()   # the daily backup (config backup.*; a missed one is made 5 minutes after start)
     try:

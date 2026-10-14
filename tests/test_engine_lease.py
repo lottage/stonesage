@@ -5,6 +5,8 @@ import json
 import os
 import sys
 import tempfile
+import threading
+import time
 import unittest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -34,6 +36,8 @@ class FakeVM:
 
     def systemctl(self, verb, unit):
         self.log.append((verb, unit))
+        if verb == "is-active":
+            return {"ok": unit in self.running, "error": None}
         if unit in self.broken:
             return {"ok": False, "error": "Job failed"}
         if verb == "start":
@@ -166,6 +170,265 @@ class TestClock(unittest.TestCase):
         self.assertFalse(out["ok"])
         self.assertEqual(r.traces[-1]["event"], "revert_failed")
         self.assertEqual(r.pushes[-1][0], "Computer: engines did not come back")
+
+
+NORMAL = {"llama-coordinator.service", "llama-worker.service", "vision-server.service"}
+
+
+class TestCancelWhileStarting(unittest.TestCase):
+    """2026-10-14: a takeback released a lease that was still `starting`; the start sequence went on, evicted the coordinator and
+    worker, and nothing reverted them. release() now cancels the start; whichever step it hits, the end state is the normal one."""
+
+    def rig(self):
+        r = Rig(stand_ins=LITE)
+        r.fired, r.out, r.thread, r.polls_after = False, {}, None, 0
+        return r
+
+    @staticmethod
+    def fire(r):
+        """release() the way takeback does (another thread), once; returns when the cancel flag is set."""
+        if r.fired:
+            return
+        r.fired = True
+
+        def go():
+            r.out.update(r.lease.release(why="takeback: on_loan", approver="takeback"))
+            r.out["running_at_return"] = set(r.vm.running)
+
+        ctl = r.lease._starting
+        r.thread = threading.Thread(target=go)
+        r.thread.start()
+        deadline = time.time() + 5
+        while not ctl.cancel.is_set() and time.time() < deadline:
+            time.sleep(0.001)
+        assert ctl.cancel.is_set(), "release() did not set the cancel flag"
+
+    def at(self, r, trigger):
+        """Fire release() at one point of the start sequence."""
+        vm_ctl, vm_ok, real_save, real_sleep = r.vm.systemctl, r.vm.http_ok, r.lease._save, r.lease.sleep
+
+        def ctl(verb, unit):
+            res = vm_ctl(verb, unit)
+            if (trigger, verb, unit) == ("after_eviction", "start", "llama-longctx.service"):
+                self.fire(r)
+            return res
+
+        def ok(url):
+            res = vm_ok(url)
+            if r.fired and (":8005" in url or ":8006" in url):
+                r.polls_after += 1
+            if trigger == "after_stand_in" and res and ":8006" in url:
+                self.fire(r)
+            if trigger == "just_before_active" and res and ":8005" in url:
+                self.fire(r)                                                         # the layout answered; the lease is about to turn active
+            return res
+
+        def sleep(sec):
+            if trigger == "during_stand_in_wait" and not r.fired:
+                self.fire(r)
+            if trigger == "during_health_wait" and not r.fired and r.vm.running >= {"llama-courage-lite.service", "llama-longctx.service"}:
+                self.fire(r)
+            real_sleep(sec)
+
+        def save():
+            real_save()
+            if trigger == "before_stand_in":
+                self.fire(r)
+
+        r.lease.systemctl, r.lease.http_ok, r.lease.sleep, r.lease._save = ctl, ok, sleep, save
+        if trigger == "during_stand_in_wait":
+            r.lease.http_ok = lambda url: False if ":8006" in url else ok(url)       # the stand-in is slow
+        if trigger == "during_health_wait":
+            slow = {"n": 0}
+
+            def slow_ok(url):
+                if ":8005" in url:
+                    slow["n"] += 1
+                    r.polls_after += 1 if r.fired else 0
+                    return slow["n"] > 1 and ok(url)                                  # the layout is slow: first poll fails
+                return ok(url)
+            r.lease.http_ok = slow_ok
+
+    def check(self, trigger, stage, evicted):
+        r = self.rig()
+        self.at(r, trigger)
+        res = r.lease.acquire("longctx_6750", 3600, "garden", "garden-scheduler", yield_to_computer=True)
+        r.thread.join(10)
+        self.assertFalse(r.thread.is_alive())
+        self.assertFalse(res["ok"])
+        self.assertEqual(res.get("stage"), stage, res)
+        self.assertEqual(r.vm.running, NORMAL)                                       # coordinator + worker + vision, no layout, no stand-in
+        self.assertIsNone(r.lease.lease)
+        self.assertIsNone(r.lease._starting)
+        with open(r.path) as f:
+            self.assertIsNone(json.load(f))
+        self.assertEqual(r.out["running_at_return"], NORMAL)                         # release() did not return before the engines were back
+        self.assertTrue(r.out["ok"], r.out)
+        self.assertTrue(r.out["cancelled_while_starting"])
+        rec = [t for t in r.traces if t["event"] == "cancelled_while_starting"]
+        self.assertEqual(len(rec), 1)
+        self.assertEqual(rec[0]["stage"], stage)
+        self.assertNotIn("acquire", [t["event"] for t in r.traces])
+        started = [u for v, u in r.vm.log if v == "start"]
+        if evicted:
+            self.assertIn("llama-longctx.service", started)
+        else:
+            self.assertNotIn("llama-longctx.service", started)                       # cancelled before anything was evicted
+            self.assertEqual(r.vm.log.count(("start", "llama-coordinator.service")), 0)
+        return r
+
+    def test_release_before_the_stand_in_starts(self):
+        r = self.check("before_stand_in", "before_stand_in", evicted=False)
+        self.assertNotIn(("start", "llama-courage-lite.service"), r.vm.log)
+
+    def test_release_while_waiting_for_the_stand_in(self):
+        r = self.check("during_stand_in_wait", "after_stand_in", evicted=False)
+        self.assertIn(("stop", "llama-courage-lite.service"), r.vm.log)
+        self.assertEqual(r.polls_after, 0)                                           # the wait gave up at once
+
+    def test_release_after_the_stand_in_is_up_before_anything_is_evicted(self):
+        r = self.check("after_stand_in", "after_stand_in", evicted=False)
+        self.assertIn(("stop", "llama-courage-lite.service"), r.vm.log)
+
+    def test_release_right_after_the_eviction(self):
+        r = self.check("after_eviction", "after_eviction", evicted=True)
+        self.assertLess(r.vm.log.index(("start", "llama-coordinator.service")), r.vm.log.index(("stop", "llama-courage-lite.service")))
+
+    def test_release_during_the_layouts_health_wait(self):
+        r = self.check("during_health_wait", "during_health_wait", evicted=True)
+        self.assertEqual(r.polls_after, 0)                                           # no further polling of the layout after the cancel
+
+    def test_release_the_moment_the_layout_answers(self):
+        self.check("just_before_active", "during_health_wait", evicted=True)
+
+    def test_a_cancelled_lease_can_be_acquired_again(self):
+        r = self.check("after_eviction", "after_eviction", evicted=True)
+        r.lease.systemctl, r.lease.http_ok, r.lease.sleep = r.vm.systemctl, r.vm.http_ok, lambda s: setattr(r, "now", r.now + s)
+        self.assertTrue(r.lease.acquire("longctx_6750", 3600, "again", "owner")["ok"])
+
+    def test_release_reports_in_progress_instead_of_released_when_the_cancel_has_not_finished(self):
+        r = self.rig()
+        r.lease.cancel_wait_s = 0.05
+        self.at(r, "after_eviction")
+        real = r.lease.systemctl
+
+        def slow(verb, unit):
+            if r.fired and verb == "start" and unit == "llama-coordinator.service":
+                time.sleep(0.4)                                                      # the revert is still running when release gives up waiting
+            return real(verb, unit)
+        r.lease.systemctl = slow
+        r.lease.acquire("longctx_6750", 3600, "garden", "garden-scheduler")
+        r.thread.join(10)
+        self.assertFalse(r.out["ok"])
+        self.assertTrue(r.out["in_progress"])
+        self.assertIn("being cancelled", r.out["error"])
+        self.assertNotIn("llama-coordinator.service", r.out["running_at_return"])    # and it did not claim otherwise
+        self.assertEqual(r.vm.running, NORMAL)                                       # the start sequence finished the job anyway
+
+    def test_a_second_acquire_during_a_start_is_refused(self):
+        r = self.rig()
+        seen = {}
+        real = r.vm.systemctl
+
+        def ctl(verb, unit):
+            if (verb, unit) == ("start", "llama-longctx.service") and "res" not in seen:
+                seen["res"] = r.lease.acquire("longctx_6600", 3600, "second", "owner")
+            return real(verb, unit)
+        r.lease.systemctl = ctl
+        self.assertTrue(r.lease.acquire("longctx_6750", 3600, "first", "owner")["ok"])
+        self.assertFalse(seen["res"]["ok"])
+        self.assertIn("already held", seen["res"]["error"])
+
+    def test_release_of_an_active_lease_is_unchanged(self):
+        r = self.rig()
+        lid = r.lease.acquire("longctx_6750", 3600, "x", "owner")["lease_id"]
+        out = r.lease.release(lid)
+        self.assertTrue(out["ok"])
+        self.assertNotIn("cancelled_while_starting", out)
+        self.assertEqual(r.vm.running, NORMAL)
+
+
+class TestReconcile(unittest.TestCase):
+    def stray(self, r):
+        """The live 2026-10-14 end state: layout + stand-in running, coordinator and worker down, no lease."""
+        r.vm.running = {"vision-server.service", "llama-longctx.service", "llama-courage-lite.service"}
+
+    def test_a_stray_layout_with_no_lease_is_put_back(self):
+        r = Rig(stand_ins=LITE)
+        self.stray(r)
+        out = r.lease.reconcile(immediate=True)
+        self.assertEqual(r.vm.running, NORMAL)
+        self.assertEqual(out["stray_layouts"], ["llama-longctx.service"])
+        self.assertEqual(sorted(out["engines_down"]), ["llama-coordinator.service", "llama-worker.service"])
+        self.assertEqual([t["event"] for t in r.traces], ["reconcile"])
+        self.assertEqual(len(r.pushes), 1)
+        self.assertIsNone(r.lease.lease)
+        self.assertIsNone(r.lease.reconcile(immediate=True))                          # clean now: nothing to do
+        self.assertEqual(len(r.pushes), 1)
+
+    def test_a_stopped_engine_alone_is_started(self):
+        r = Rig()
+        r.vm.running.discard("vision-server.service")
+        r.lease.reconcile(immediate=True)
+        self.assertEqual(r.vm.running, NORMAL)
+
+    def test_a_stray_must_be_seen_twice_unless_immediate(self):
+        r = Rig(stand_ins=LITE)
+        self.stray(r)
+        self.assertIsNone(r.lease.reconcile())
+        self.assertNotEqual(r.vm.running, NORMAL)
+        r.now += 5
+        self.assertIsNone(r.lease.reconcile())
+        r.now += 30
+        self.assertIsNotNone(r.lease.reconcile())
+        self.assertEqual(r.vm.running, NORMAL)
+
+    def test_a_held_lease_is_never_touched(self):
+        r = Rig(stand_ins=LITE)
+        r.lease.acquire("longctx_6750", 3600, "garden", "garden-scheduler")
+        before, log = set(r.vm.running), len(r.vm.log)
+        self.assertIsNone(r.lease.reconcile(immediate=True))
+        self.assertEqual(r.vm.running, before)
+        self.assertEqual(len(r.vm.log), log)                                          # not even a status query
+
+    def test_a_lease_that_is_starting_is_never_touched(self):
+        r = Rig(stand_ins=LITE)
+        seen, real = {}, r.vm.systemctl
+
+        def ctl(verb, unit):
+            if (verb, unit) == ("start", "llama-longctx.service") and not seen:
+                seen["out"] = r.lease.reconcile(immediate=True)
+            return real(verb, unit)
+        r.lease.systemctl = ctl
+        self.assertTrue(r.lease.acquire("longctx_6750", 3600, "g", "owner")["ok"])
+        self.assertIsNone(seen["out"])
+        self.assertIn("llama-longctx.service", r.vm.running)
+        self.assertNotIn("reconcile", [t["event"] for t in r.traces])
+
+    def test_one_phone_note_per_incident_even_when_it_cannot_be_fixed(self):
+        r = Rig(stand_ins=LITE)
+        self.stray(r)
+        r.vm.broken.add("llama-coordinator.service")
+        r.lease.reconcile(immediate=True)
+        r.lease.reconcile(immediate=True)
+        self.assertEqual(len(r.pushes), 1)
+        self.assertEqual(r.traces[-1]["triggers"], ["revert_failed"])
+        self.assertIn("llama-courage-lite.service", r.vm.running)                      # the spare brain stays while the real one is down
+
+    def test_an_unreachable_host_is_not_a_stray(self):
+        r = Rig()
+        r.lease.systemctl = lambda verb, unit: {"ok": False, "error": "ssh: connect to host: timed out"}
+        self.assertIsNone(r.lease.reconcile(immediate=True))
+        self.assertEqual(r.traces, [])
+
+    def test_recover_then_reconcile_at_start(self):
+        r = Rig(stand_ins=LITE)
+        r.lease.acquire("longctx_6750")
+        fresh = r.make()
+        fresh.recover()
+        self.stray(r)                                                                  # something else left the layout running
+        fresh.reconcile(immediate=True)
+        self.assertEqual(r.vm.running, NORMAL)
 
 
 class TestComputerOnLoan(unittest.TestCase):
@@ -310,6 +573,34 @@ class TestLeaseAndCockpit(unittest.TestCase):
     def test_a_lease_a_person_asks_for_ignores_that_he_is_on_the_page(self):
         r = self.rig()
         self.assertTrue(r.lease.acquire("longctx_6750", 3600, "long context", "owner")["ok"])
+
+    def demand_rig(self, household_awake=True, cockpit=False):
+        r = Rig(stand_ins=LITE)
+        reason = "someone is using StoneSage (3 s ago)"
+        house = ["Alex is awake (using their phone)"] if household_awake else []
+
+        def gate():
+            g = {"open": not house and not cockpit, "reasons": [], "open_ignoring_cockpit": not house,
+                 "demand_open": True, "demand_open_with_cockpit": not cockpit}
+            return {"gpus": {"RX 6750 XT": g, "RX 6600": dict(g)}, "shared_reasons": house + ([reason] if cockpit else []),
+                    "demand_shared_reasons": [], "cockpit": reason if cockpit else None}
+        r.lease.idle_check = gate
+        return r
+
+    def test_background_work_ignores_the_household_signal(self):
+        r = self.demand_rig()
+        res = r.lease.acquire("longctx_6750", 3600, "garden", "garden-scheduler", yield_to_computer=True)
+        self.assertTrue(res["ok"], res)
+
+    def test_a_lease_a_person_asks_for_keeps_the_household_rule(self):
+        r = self.demand_rig()
+        res = r.lease.acquire("longctx_6750", 3600, "long context", "owner")
+        self.assertFalse(res["ok"])
+        self.assertIn("idle gate closed", res["error"])
+
+    def test_the_cockpit_stops_any_background_lease(self):
+        r = self.demand_rig(household_awake=False, cockpit=True)
+        self.assertFalse(r.lease.acquire("longctx_6750", 3600, "garden", "garden-scheduler", yield_to_computer=True)["ok"])
 
     def test_the_flag_is_kept_and_reported_by_brain_and_yielding(self):
         r = self.rig(cockpit=False)

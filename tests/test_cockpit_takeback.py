@@ -137,10 +137,10 @@ class TestCockpitActivity(unittest.TestCase):
 class FakeLeaseSvc:
     """What Takeback needs of the lease, and what Computer's loop needs of brain(): a held lease that comes back when released."""
 
-    def __init__(self, clock, load_s=30.0, mode="lite", yield_flag=True):
+    def __init__(self, clock, load_s=30.0, mode="lite", yield_flag=True, roles=("coordinator", "worker")):
         self.clock, self.load_s, self.mode = clock, load_s, mode
         self.lease = {"id": "L1", "layout": "longctx_6750", "state": "active", "yield_to_computer": yield_flag,
-                      "evicted_roles": ["coordinator", "worker"], "expires": clock() + 3000}
+                      "evicted_roles": list(roles), "expires": clock() + 3000}
         self.released, self.released_at, self.release_delay = [], None, 0.0
         self.coordinator_down = False
 
@@ -152,11 +152,11 @@ class FakeLeaseSvc:
     def yielding(self, role="coordinator"):
         self._settle()
         l = self.lease
-        return dict(l) if l and l.get("yield_to_computer") and l.get("state") in ("starting", "active") else None
+        return dict(l) if l and l.get("yield_to_computer") and l.get("state") in ("starting", "active")             and role in l["evicted_roles"] else None
 
     def brain(self, role="coordinator"):
         self._settle()
-        if not self.lease:
+        if not self.lease or role not in self.lease["evicted_roles"]:
             return None
         if self.mode == "lite":
             return {"mode": "lite", "url": "http://vm:8006", "until": self.lease["expires"], "yield_to_computer": True}
@@ -278,29 +278,35 @@ class TestTakebackTriggers(TakebackRig):
         self.assertEqual((self.svc.released, self.trace(), self.urls), ([], [], [LITE_URL]))
 
     # (b) the request needs the full Computer: decided before the tool runs
-    def test_a_camera_look_is_taken_back_before_it_runs(self):
-        self.build(lite=[tool_call("camera_look", {"camera": "living_room"})],
-                   full=[tool_call("camera_look", {"camera": "living_room"}), reply("A cat on the couch.")])
-        events = self.ask("what is on the living room camera?")
-        self.assertEqual(self.looks, ["camera.living_room_hd_stream"])         # ran ONCE: on the full brain, never on the spare one
+    def test_think_harder_is_taken_back_before_it_runs(self):
+        self.build(lite=[tool_call("think_harder", {"question": "why is the sky blue"})], full=[reply("Rayleigh scattering.")])
+        events = self.ask("why is the sky blue, really?")
         self.assertEqual(len(self.lite_llm.requests), 1)
-        self.assertEqual(self.urls, [LITE_URL, FULL_URL, FULL_URL])
-        self.assertEqual(events[-1]["content"], "A cat on the couch.")
+        self.assertEqual(self.urls, [LITE_URL, FULL_URL])
+        self.assertEqual(events[-1]["content"], "Rayleigh scattering.")
         t = self.trace()[0]
-        self.assertEqual((t["why"], t["tool"]), ("tool", "camera_look"))
+        self.assertEqual((t["why"], t["tool"], t["card"]), ("tool", "think_harder", "coordinator"))
         self.assertEqual(self.yielded[0][0], "takeback: tool")
         self.assertEqual(self.svc.released[0][1], "takeback: tool")
 
-    def test_each_default_tool_and_a_configured_list(self):
-        for tool, args in (("camera_scan", {"camera": "living_room"}), ("think_harder", {"question": "why is the sky blue"})):
-            self.build(lite=[tool_call(tool, args)], full=[reply("ok")])
-            self.ask("do the thing")
-            self.assertEqual(len(self.svc.released), 1, tool)
-        # a configured list replaces the default: presence_now now needs the full brain, camera_look does not
+    def test_a_camera_look_on_the_spare_brain_does_not_take_the_coordinator_back(self):
+        # The owner, 2026-10-14: vision lives on the other card; a camera question while the garden holds the 6750 leaves it alone
+        self.build(lite=[tool_call("camera_look", {"camera": "living_room"}), reply("A cat on the couch.")])
+        events = self.ask("what is on the living room camera?")
+        self.assertEqual(self.looks, ["camera.living_room_hd_stream"])         # the look ran, on the spare brain's turn
+        self.assertEqual((self.svc.released, self.yielded, self.trace()), ([], [], []))
+        self.assertNotIn("holding", self.types(events))
+        self.assertEqual(set(self.urls), {LITE_URL})
+
+    def test_the_default_coordinator_tool_and_a_configured_list(self):
+        self.build(lite=[tool_call("think_harder", {"question": "why is the sky blue"})], full=[reply("ok")])
+        self.ask("do the thing")
+        self.assertEqual(len(self.svc.released), 1)
+        # a configured list replaces the default: presence_now now needs the full brain, think_harder does not
         self.build(lite=[tool_call("presence_now", {})], full=[reply("ok")], cfg={"tools": ["presence_now"]})
         self.ask("where is everyone")
         self.assertEqual(len(self.svc.released), 1)
-        self.build(lite=[tool_call("camera_look", {"camera": "living_room"}), reply("a cat")], cfg={"tools": ["presence_now"]})
+        self.build(lite=[tool_call("think_harder", {"question": "x"}), reply("a cat")], cfg={"tools": ["presence_now"]})
         self.ask("look")
         self.assertEqual(self.svc.released, [])
 
@@ -315,7 +321,7 @@ class TestTakebackTriggers(TakebackRig):
 
     # not a garden lease, not enabled
     def test_a_lease_that_is_not_background_work_is_never_taken_back(self):
-        self.build(lite=[tool_call("camera_look", {"camera": "living_room"}), reply("Looking is on hold.")], yield_flag=False)
+        self.build(lite=[tool_call("think_harder", {"question": "why is the sky blue"}), reply("Looking is on hold.")], yield_flag=False)
         events = self.ask("what is on the camera?")
         self.assertEqual(self.svc.released, [])
         self.assertNotIn("holding", self.types(events))
@@ -327,7 +333,7 @@ class TestTakebackTriggers(TakebackRig):
         self.assertEqual(len(self.escalated), 1)
 
     def test_switched_off_means_the_old_behaviour(self):
-        self.build(lite=[tool_call("camera_look", {"camera": "living_room"}), reply("no")], cfg={"enabled": False})
+        self.build(lite=[tool_call("think_harder", {"question": "why is the sky blue"}), reply("no")], cfg={"enabled": False})
         self.ask("look")
         self.assertEqual(self.svc.released, [])
 
@@ -381,7 +387,7 @@ class TestTakebackTriggers(TakebackRig):
 
 class TestTakebackFlow(TakebackRig):
     def test_streams_get_one_moment_first_and_the_answer_follows_as_a_new_paragraph(self):
-        self.build(lite=[tool_call("camera_look", {"camera": "living_room"})], full=[reply("Nothing moving.")])
+        self.build(lite=[tool_call("think_harder", {"question": "why is the sky blue"})], full=[reply("Nothing moving.")])
         out = list(streamed(self.agent.run([{"role": "user", "content": "look at the room"}], "web-1"), holding=True))
         parts = [e for e in out if e["type"] in ("partial", "final")]
         self.assertEqual(parts[0], {"type": "partial", "content": FILLER})
@@ -389,13 +395,13 @@ class TestTakebackFlow(TakebackRig):
         self.assertEqual(parts[-1]["full"], "Nothing moving.")
 
     def test_one_shot_callers_never_see_the_filler(self):
-        self.build(lite=[tool_call("camera_look", {"camera": "living_room"})], full=[reply("Nothing moving.")])
+        self.build(lite=[tool_call("think_harder", {"question": "why is the sky blue"})], full=[reply("Nothing moving.")])
         out = list(streamed(self.agent.run([{"role": "user", "content": "look at the room"}], "alexa:1")))
         self.assertEqual("".join(e["content"] for e in out if e["type"] in ("partial", "final")), "Nothing moving.")
         self.assertNotIn("holding", [e["type"] for e in out])
 
     def test_the_web_chat_sse_carries_it(self):
-        self.build(lite=[tool_call("camera_look", {"camera": "living_room"})], full=[reply("Nothing moving.")])
+        self.build(lite=[tool_call("think_harder", {"question": "why is the sky blue"})], full=[reply("Nothing moving.")])
         chunks = list(self.agent.sse([{"role": "user", "content": "look at the room"}], "web-1"))
         text = "".join(json.loads(c[6:])["choices"][0]["delta"].get("content", "") for c in chunks
                        if c.startswith("data: {") and json.loads(c[6:]).get("choices"))
@@ -419,18 +425,18 @@ class TestTakebackFlow(TakebackRig):
         self.assertGreater(self.tb.cooldown_left(), 0)
 
     def test_when_the_spare_brain_never_answered_the_user_gets_the_honest_message(self):
-        self.build(lite=[tool_call("camera_look", {"camera": "living_room"})], full=[reply("never asked")], load_s=500)
+        self.build(lite=[tool_call("think_harder", {"question": "why is the sky blue"})], full=[reply("never asked")], load_s=500)
         events = self.ask("look")
         self.assertEqual(events[-1], {"type": "final", "content": STILL_COMING_BACK})
         self.assertEqual(self.trace()[0]["outcome"], "takeback_failed")
 
     def test_the_wait_is_configurable(self):
-        self.build(lite=[tool_call("camera_look", {"camera": "living_room"})], load_s=500, cfg={"wait_s": 10})
+        self.build(lite=[tool_call("think_harder", {"question": "why is the sky blue"})], load_s=500, cfg={"wait_s": 10})
         self.ask("look")
         self.assertAlmostEqual(self.trace()[0]["waited_ms"], 10000, delta=1500)
 
     def test_a_yielder_that_raises_does_not_keep_the_gpu(self):
-        self.build(lite=[tool_call("camera_look", {"camera": "living_room"})], full=[reply("ok")])
+        self.build(lite=[tool_call("think_harder", {"question": "why is the sky blue"})], full=[reply("ok")])
         self.tb.yielders.insert(0, lambda why, cd: 1 / 0)
         events = self.ask("look")
         self.assertEqual(events[-1]["content"], "ok")
@@ -451,7 +457,7 @@ class TestTakebackFlow(TakebackRig):
         self.assertEqual(len(self.svc.released), 1)
 
     def test_a_request_while_the_lease_winds_down_goes_to_the_coordinator_and_does_not_take_back_again(self):
-        self.build(lite=[tool_call("camera_look", {"camera": "living_room"})], full=[reply("one"), reply("two")])
+        self.build(lite=[tool_call("think_harder", {"question": "why is the sky blue"})], full=[reply("one"), reply("two")])
         self.ask("look")
         self.assertIsNotNone(self.svc.lease)                              # the lease record is still there (the tail of the revert)
         self.assertEqual(self.svc.brain()["mode"], "lite")                # ... and it still says "spare brain"
@@ -463,7 +469,7 @@ class TestTakebackFlow(TakebackRig):
         self.assertNotIn("holding", self.types(events))
 
     def test_a_request_while_the_lease_winds_down_and_the_coordinator_is_not_up_stays_on_the_spare_brain(self):
-        self.build(lite=[tool_call("camera_look", {"camera": "living_room"}), reply("Short answer.")], load_s=500, cfg={"wait_s": 5})
+        self.build(lite=[tool_call("think_harder", {"question": "why is the sky blue"}), reply("Short answer.")], load_s=500, cfg={"wait_s": 5})
         self.ask("look")                                                   # timed out: takeback_failed
         events = self.ask("and now?")
         self.assertEqual(events[-1]["content"], "Short answer.")
@@ -473,7 +479,7 @@ class TestTakebackFlow(TakebackRig):
     def test_cooldown_state_survives_a_restart(self):
         import tempfile
         path = os.path.join(tempfile.mkdtemp(), "takeback.json")
-        self.build(lite=[tool_call("camera_look", {"camera": "living_room"})], full=[reply("ok")])
+        self.build(lite=[tool_call("think_harder", {"question": "why is the sky blue"})], full=[reply("ok")])
         self.tb.path = path
         self.ask("look")
         again = Takeback(lambda: self.config, lambda: None, lambda: True, path=path, clock=self.clock)
@@ -481,22 +487,22 @@ class TestTakebackFlow(TakebackRig):
         self.assertEqual(again.last["why"], "tool")
 
     def test_the_cooldown_starts_from_the_first_moment_and_follows_the_config(self):
-        self.build(lite=[tool_call("camera_look", {"camera": "living_room"})], full=[reply("ok")], cfg={"cooldown_min": 5})
+        self.build(lite=[tool_call("think_harder", {"question": "why is the sky blue"})], full=[reply("ok")], cfg={"cooldown_min": 5})
         self.ask("look")
         self.assertEqual(self.yielded[0][1], 300.0)
         self.assertAlmostEqual(self.tb.cooldown_left(), 300 - 30, delta=15)
 
     def test_metrics_count_by_why_and_outcome_and_keep_a_wait_histogram(self):
-        self.build(lite=[tool_call("camera_look", {"camera": "living_room"})], full=[reply("ok")])
+        self.build(lite=[tool_call("think_harder", {"question": "why is the sky blue"})], full=[reply("ok")])
         self.ask("look")
         text = "\n".join(self.tb.metrics())
-        self.assertIn('stonesage_takeback_total{why="tool",outcome="ok"} 1', text)
+        self.assertIn('stonesage_takeback_total{card="coordinator",why="tool",outcome="ok"} 1', text)
         self.assertIn("stonesage_takeback_user_wait_seconds_count 1", text)
         self.assertIn('stonesage_takeback_user_wait_seconds_bucket{le="60"} 1', text)
         self.assertIn('stonesage_takeback_user_wait_seconds_bucket{le="10"} 0', text)
 
     def test_status_reports_the_last_takeback(self):
-        self.build(lite=[tool_call("camera_look", {"camera": "living_room"})], full=[reply("ok")])
+        self.build(lite=[tool_call("think_harder", {"question": "why is the sky blue"})], full=[reply("ok")])
         self.ask("look")
         st = self.tb.status()
         self.assertEqual(st["last"]["why"], "tool")
@@ -550,7 +556,7 @@ class TestTakebackWithTheRealLease(unittest.TestCase):
         tb = Takeback(lambda: {}, lambda: lease, lambda: vm.http_ok("http://vm:8001"), clock=clock, sleep=clock.sleep)
         tb.register_yielder(lambda why, cd: stopped.append(why))
         urls = []
-        lite, full = ScriptedLLM(tool_call("camera_look", {"camera": "living_room"})), ScriptedLLM(reply("A cat."))
+        lite, full = ScriptedLLM(tool_call("think_harder", {"question": "why is the sky blue"})), ScriptedLLM(reply("A cat."))
 
         def post(url, body, timeout):
             urls.append(url)
