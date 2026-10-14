@@ -40,12 +40,15 @@ def home_status_text(hs: Optional[Dict[str, Any]]) -> Optional[str]:
     return f"{where} ({hs.get('source_label', 'GPS')}{since})"
 
 
-def build_presence_card(state: Optional[Dict[str, Any]], now: Optional[datetime] = None, who: Sequence[str] = ()) -> str:
+def build_presence_card(state: Optional[Dict[str, Any]], now: Optional[datetime] = None, who: Sequence[str] = (),
+                        cameras: bool = True) -> str:
     """Compact 'who is where' card: phone GPS / Life360 home status for people (HA person entities), then the
     last camera sighting for everyone."""
     now = now or datetime.now()
-    lines = [f"[Who is where, {now.strftime('%a') + ' ' + clock(now)}: GPS says home/away; camera sightings are past views, "
-             "call presence_now or camera_look for now]"]
+    how = "call presence_now or camera_look for now" if cameras else "call presence_now for now"
+    lines = [f"[Who is where, {now.strftime('%a') + ' ' + clock(now)}: GPS says home/away; camera sightings are past views, {how}]"]
+    if not cameras:
+        lines[0] = f"[Who is where, {now.strftime('%a') + ' ' + clock(now)}: GPS says home/away; {how}]"
     locations = (state or {}).get("locations") or {}
     home_status = (state or {}).get("home_status") or {}
     for name in who:          # the household's people, then pets (courage/household.py)
@@ -54,6 +57,10 @@ def build_presence_card(state: Optional[Dict[str, Any]], now: Optional[datetime]
         cam = (_ago(loc.get("minutes_ago")) + (f" on {loc.get('camera') or loc.get('room')}" if (loc.get("camera") or loc.get("room")) else "")
                if loc else "no recent sighting")
         lines.append(f"- {name}: {gps}; camera: {cam}" if gps else f"- {name}: {cam}")
+    for key, hs in (home_status.items() if not who else ()):   # household not named yet: list the people Home Assistant knows
+        text = home_status_text(hs)
+        if text:
+            lines.append(f"- {key.title()}: {text}")
     anon = locations.get("someone")  # Frigate saw a person it could not put a name to
     if anon and (anon.get("minutes_ago") or 0) <= 30:
         where = anon.get("camera")
@@ -69,7 +76,7 @@ def build_static_prompt(runs_on: Optional[str] = None, persona: Optional[str] = 
 
 
 def build_system_prompt(presence_state: Optional[Dict[str, Any]], now: Optional[datetime] = None,
-                        runs_on: Optional[str] = None, persona: Optional[str] = None, who: Sequence[str] = ()) -> str:
+                        runs_on: Optional[str] = None, persona: Optional[str] = None, who: Sequence[str] = (), cameras: bool = True) -> str:
     """persona: the soul's persona.md (soul.py); None = the one in this file. runs_on: live one-liner about Courage's own model and GPU (system_profile), so it never guesses."""
     me = f"\nYou run on {runs_on}, in the attic." if runs_on else ""
-    return (persona or PERSONA) + me +"\n\n" + build_presence_card(presence_state, now, who)
+    return (persona or PERSONA) + me +"\n\n" + build_presence_card(presence_state, now, who, cameras)

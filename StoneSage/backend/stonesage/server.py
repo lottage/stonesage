@@ -2735,6 +2735,7 @@ def get_courage_agent():
             soul = Soul.open(data_dir, "courage-computer", display_name="Computer", default_persona=home.get("persona") or PERSONA,
                              legacy={"memories.json": os.path.join(data_dir, "courage_memories.json")})
             _courage_agent.persona_fn = soul.persona
+            _courage_agent.soul = soul        # the setup wizard re-seeds its persona when the household changes
             _courage_agent.memory = _courage_memory(soul.path("memories.json"), url)
             # approvals by actionable phone notification (Yes / No buttons), for Home Assistant conversations by default
             phone_approvals = home.get("phone_approvals")   # (HA url, token, notify service) or None

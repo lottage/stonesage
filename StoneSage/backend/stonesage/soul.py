@@ -138,6 +138,14 @@ class Soul:
             if self._default_version:
                 self.manifest["persona_version"] = self._default_version
 
+    def set_default_persona(self, text: str) -> None:
+        """The code's persona changed while running (an app rendered it for a new household): an untouched persona.md
+        follows it, an edited one stays the soul's own (same rule as at open)."""
+        if text and text != self._default_persona:
+            self._default_persona = text
+            self._seed_persona()
+            self._save_manifest()
+
     def persona(self) -> str:
         """The persona as the file has it now (re-read each call, so an edit takes effect on the next turn)."""
         try:

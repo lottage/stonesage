@@ -55,6 +55,8 @@ TRAILING_OFFER = re.compile(r"\s*(?:(?:would you like|do you want|shall i|should
 ACTION_OFFER = re.compile(r"\s*(?:would you like|do you want|shall i|should i|want me to|can i|do you need me to)\b"
                           r"[^.?!]*\b(turn|switch|set|open|close|lock|unlock|raise|lower|dim|start|stop|activate|"
                           r"adjust|change|increase|decrease)\b[^.?!]*[?.!]\s*$", re.I)
+UNKNOWN_TOOL_NUDGE = ("That tool does not exist here. The only tools are: {tools}. Call one of those, or answer the person in "
+                     "plain words without JSON.")
 NUDGE = "You described a tool call instead of making it. Call the right tool now; do not reply in text."
 
 HISTORY_TURNS = 6  # 3 exchanges (was 2; longer history once made the model skip tools: re-check the live eval on changes)
@@ -67,6 +69,20 @@ PROMISE_MAX_CHARS = 300  # "Let me check the cameras." is a promise; a story tha
 FRESH_FACTS = ("For the next message: device states, temperatures, who is where, camera views and household notes "
                "(cars, preferences, past events) must come from a tool call you make now, not from earlier replies or guesses. "
                "A greeting or small talk needs no tools.")
+
+
+def fresh_facts(tools: Any) -> str:
+    """FRESH_FACTS naming only what the tools on offer can supply (a house with no cameras is not told to fetch camera views).
+    With every tool it is FRESH_FACTS word for word; "" = nothing to remind of."""
+    have = set(tools)
+    parts = (["device states", "temperatures"] if "ha_get_states" in have else [])         + (["who is where"] if "presence_now" in have else []) + (["camera views"] if "camera_look" in have else [])         + (["household notes (cars, preferences, past events)"] if "memory_search" in have else [])
+    if not parts:
+        return ""
+    listed = parts[0] if len(parts) == 1 else ", ".join(parts[:-1]) + " and " + parts[-1]
+    return ("For the next message: " + listed + " must come from a tool call you make now, not from earlier replies or guesses. "
+            "A greeting or small talk needs no tools.")
+
+
 LITE_MAX_TOKENS = 400        # the stand-in on the CPU keeps replies short (stories wait for the full brain)
 LITE_NOTE = ("\nRight now you run on the spare brain until {until} (the full one is lent out): keep replies short, and "
              "say so plainly if a question needs the full one.")
@@ -326,6 +342,64 @@ def bare_tool_call(text: str, names: Any) -> Optional[Dict[str, Any]]:
             "function": {"name": m.group(1), "arguments": json.dumps(args, ensure_ascii=False)}}
 
 
+FENCE = re.compile(r"^```[A-Za-z0-9_-]*\s*(.*?)\s*```$", re.S)
+
+
+def _call_shape(obj: Any) -> Optional[Tuple[str, Dict[str, Any]]]:
+    """(tool name, arguments) when obj has the shape of a tool call, else None."""
+    if not isinstance(obj, dict):
+        return None
+    fn = obj.get("function") if isinstance(obj.get("function"), dict) else obj
+    name = fn.get("name", fn.get("tool", fn.get("tool_name")))
+    if not isinstance(name, str) or not name:
+        return None
+    if not any(k in fn for k in ("arguments", "parameters", "args", "input")) and set(fn) - {"name", "tool", "tool_name", "type", "id"}:
+        return None
+    args = fn.get("arguments", fn.get("parameters", fn.get("args", fn.get("input", {}))))
+    if isinstance(args, str):
+        try:
+            args = json.loads(args, strict=False)
+        except ValueError:
+            args = None
+    return name, args if isinstance(args, dict) else {}
+
+
+def json_tool_calls(text: str, names: Any) -> Tuple[List[Dict[str, Any]], bool]:
+    """Tool calls a reply WRITES instead of making: a JSON object `{"name": ..., "arguments"|"parameters": {...}}` or
+    `{"tool": ...}`, a list of them, or `<tool_call>` blocks, optionally inside a code fence. -> (calls for the KNOWN tools in
+    the chat shape, whether the whole reply has this shape). A reply that has the shape but names a tool that does not exist
+    gives ([], True): the caller must not show it to the person (2026-10: "Is anyone home?" came back as the JSON of a call
+    to an invented camera tool)."""
+    body = (text or "").strip()
+    m = FENCE.match(body)
+    if m:
+        body = m.group(1).strip()
+    blocks = [b.group(1) for b in TEXT_CALL.finditer(body)]
+    if blocks:
+        if TEXT_CALL.sub("", body).strip():
+            return [], False                   # prose around the blocks: not a bare call
+    elif body[:1] in ("{", "["):
+        blocks = [body]
+    else:
+        return [], False
+    items: List[Any] = []
+    for raw in blocks:
+        try:
+            val = json.loads(raw, strict=False)
+        except ValueError:
+            return [], False
+        items.extend(val if isinstance(val, list) else [val])
+    shapes = [_call_shape(i) for i in items]
+    if not items or any(sh is None for sh in shapes):
+        return [], False
+    calls = [{"id": "json-%s-%d" % (uuid.uuid4().hex[:6], n + 1), "type": "function",
+              "function": {"name": nm, "arguments": json.dumps(a, ensure_ascii=False)}}
+             for n, (nm, a) in enumerate(shapes) if nm in names]
+    if len(calls) != len(shapes):
+        return [], True                        # some name is not a tool of this household
+    return calls, True
+
+
 def describe_llm_failure(e: BaseException, timeout: float = 0) -> str:
     """What to tell the person when the model call failed: unreachable, silent too long, or answered with an error. No
     internal addresses or ports."""
@@ -557,9 +631,12 @@ class CourageAgent:
         # A strict template (FRESH_FACTS_AS == "user") takes one system message only, so it keeps "first".
         position = "first" if FRESH_FACTS_AS == "user" and CONTEXT_POSITION == "second" else CONTEXT_POSITION
         who = self.tools.deps.household.who          # the household's people and pets (supplied by the Home app)
-        context = build_presence_card(presence, who=who) + (("\n\n" + memory_card) if memory_card else "")
+        names = self.tools.tool_names()
+        facts = fresh_facts(names)
+        cams = "camera_look" in names
+        context = build_presence_card(presence, who=who, cameras=cams) + (("\n\n" + memory_card) if memory_card else "")
         if position == "first":
-            system = build_system_prompt(presence, runs_on=runs_on, persona=persona, who=who) + (("\n\n" + memory_card) if memory_card else "")
+            system = build_system_prompt(presence, runs_on=runs_on, persona=persona, who=who, cameras=cams) + (("\n\n" + memory_card) if memory_card else "")
         else:
             system = build_static_prompt(runs_on, persona)
         msgs: List[Dict[str, Any]] = [{"role": "system", "content": system}]
@@ -582,14 +659,14 @@ class CourageAgent:
             else:
                 msgs.append({"role": "system", "content": late})
             return msgs
-        if len(msgs) > base:
+        if len(msgs) > base and facts:
             # With history in context the model stops calling tools and answers from thin air; a late reminder fixes it.
             # As a system message it works for Qwen3, but stricter templates (Qwen3.8 family: Bonsai 2, 2026-09-28)
             # refuse a system message that isn't first (HTTP 500), so FRESH_FACTS_AS can put it on the user's turn.
             if FRESH_FACTS_AS == "user" and msgs[-1]["role"] == "user":
                 msgs[-1] = {"role": "user", "content": f"[{FRESH_FACTS}]\n\n{msgs[-1]['content']}"}
             else:
-                msgs.insert(len(msgs) - 1, {"role": "system", "content": FRESH_FACTS})
+                msgs.insert(len(msgs) - 1, {"role": "system", "content": facts})
         return msgs
 
     @staticmethod
@@ -846,6 +923,21 @@ class CourageAgent:
                 if bare:                      # the model wrote the tool's name instead of calling it
                     tr.trigger("bare_tool_name")
                     calls, msg["content"] = [bare], ""
+                else:                         # ... or wrote the call itself as JSON: run it (known tool), never show it
+                    jcalls, json_shaped = json_tool_calls(THINK.sub("", msg.get("content") or ""),
+                                                          {t["function"]["name"] for t in self.tools.openai_tools()})
+                    if jcalls:
+                        tr.trigger("json_tool_call")
+                        calls, msg["content"] = jcalls, ""
+                    elif json_shaped:         # a call to a tool this house does not have
+                        tr.trigger("json_unknown_tool")
+                        if not nudged:
+                            nudged = True
+                            messages.append({"role": "assistant", "content": ""})
+                            messages.append({"role": "user", "content": UNKNOWN_TOOL_NUDGE.format(
+                                tools=", ".join(sorted(t["function"]["name"] for t in self.tools.openai_tools())))})
+                            continue
+                        msg["content"] = "I could not work that out. Could you ask it another way?"
             sent = msg.get("_sent") or ""
             asked = is_question(last_user)
             if not calls and sent:   # only the part not yet streamed can still lose a trailing offer

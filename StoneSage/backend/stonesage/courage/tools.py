@@ -85,6 +85,24 @@ REQUEST_WORDS = re.compile(r"\b(please|do you mind|would you mind|can you|could 
 def is_question(text: str) -> bool:
     return bool(QUESTION_START.match(text or "")) and not REQUEST_WORDS.search(text or "")
 
+# What each tool needs before Computer is offered it (CourageTools.unmet reports the first thing missing, CourageTools.available
+# applies it on every request, so a tool appears the moment the household / settings provide what it needs and goes when not).
+# A tool Computer cannot use would only be called and fail, and its name in the prompt invites the model to promise it.
+PREREQUISITES: Dict[str, str] = {
+    "presence_now": "a presence source: people or pets in the household, a camera, or Home Assistant person/tracker states",
+    "ha_get_states": "Home Assistant set up (address and token)",
+    "ha_call": "Home Assistant set up (address and token)",
+    "camera_look": "at least one camera",
+    "camera_scan": "at least one pan-capable (PTZ) camera",
+    "correct_sighting": "at least one camera (sightings come from cameras)",
+    "notify": "a registered phone (household.phones)",
+    "speak": "a speaker (household.speakers)",
+    "run_scene": "scenes defined by the app",
+    "think_harder": "Boost switched on for Computer",
+    "memory_search": "none (memory is always there)",
+}
+PRESENCE_PROBE_S = 30.0      # how long "does the presence source report anyone?" is remembered
+
 
 FILLER_WORDS ={"any", "all", "every", "the", "a", "an", "my", "our", "house", "home", "right", "now", "currently", "on", "off"}
 
@@ -119,6 +137,9 @@ class CourageDeps:
     scene_match: Callable[[str], Optional[str]] = field(default=lambda text: None)
     # who and what the home has (cameras, people, pets, phones, speakers): supplied by the Home app; empty = no home
     household: Household = field(default_factory=Household)
+    # is Home Assistant set up (address and token)? Without it ha_get_states / ha_call are not offered. The platform's
+    # default is True (a test or app that wires ha_states means it); the Home app answers from its settings.
+    ha_configured: Callable[[], bool] = field(default=lambda: True)
 
 
 def _schema(props: Dict[str, Any], required: List[str]) -> Dict[str, Any]:
@@ -138,6 +159,19 @@ class CourageTools:
         self.allowed = None if allowed is None else frozenset(allowed)
         self.clock: Callable[[], float] = time.monotonic          # tests move it
         self._commanded: Dict[str, Tuple[Optional[str], float]] = {}   # entity -> (state we left it in, when)
+        self._specs: Optional[Dict[str, Dict[str, Any]]] = None
+        self._specs_for: Any = None
+        self._probe: Tuple[float, bool] = (-1e9, False)        # (when, did the presence source report anyone)
+
+    @property
+    def specs(self) -> Dict[str, Dict[str, Any]]:
+        """The tool definitions, rendered for the household as it is now (the setup wizard swaps deps.household live)."""
+        if self._specs is None or self._specs_for is not self.deps.household:
+            self._specs, self._specs_for = self._build_specs(), self.deps.household
+        return self._specs
+
+    def _build_specs(self) -> Dict[str, Dict[str, Any]]:
+        deps = self.deps
         hh = deps.household
         cams = list(hh.cameras)
         whom = " and ".join(p for p in ((f"people ({', '.join(hh.people)})" if hh.people else ""),
@@ -148,7 +182,7 @@ class CourageTools:
         else:
             notify_text = f"Send a push notification to a household phone ({', '.join(hh.phones) or 'none registered'}). {approver}"
         was, really = hh.example_pair()
-        self.specs: Dict[str, Dict[str, Any]] = {
+        specs: Dict[str, Dict[str, Any]] = {
             "presence_now": {
                 "description": f"Where {whom} are: last camera sighting, when, "
                                "and what they were doing. Pass `who` to find one of them: if their sighting is stale this also looks "
@@ -206,7 +240,7 @@ class CourageTools:
                 "status": "Asking to make an announcement…",
             },
         }
-        self.specs["correct_sighting"] = {
+        specs["correct_sighting"] = {
             "description": f"Fix who a camera sighting shows, when the name on it is wrong ('that wasn't {was}, it was "
                            f"{really}'). Acts on the newest sighting of `who` (the name shown now; 'someone' for an unidentified "
                            "person). action is_really re-files it under `name` (for a person this also teaches face "
@@ -219,7 +253,7 @@ class CourageTools:
             "status": "Correcting {who}'s sighting…",
         }
         if deps.run_scene is not None:
-            self.specs["run_scene"] = {
+            specs["run_scene"] = {
                 "description": "Set up one of the home's scenes (movie night, bedtime...). It checks the room, changes only what is "
                                "not already right, verifies, and returns a short summary to repeat (including anything offline). "
                                "Use it for a scene by name instead of switching each device yourself. Runs at once only when the "
@@ -229,7 +263,7 @@ class CourageTools:
                 "status": "Setting up {name}…",
             }
         if deps.think_harder is not None:
-            self.specs["think_harder"] = {
+            specs["think_harder"] = {
                 "description": "Ask a much larger model for help with a hard question: reasoning, maths, science, coding or "
                                "general knowledge you are unsure of. Write `question` so it stands alone. Never use it for "
                                "anything you can answer with the house tools (presence, cameras, devices).",
@@ -240,10 +274,46 @@ class CourageTools:
                 "handler": self._think_harder, "approval": False,
                 "status": "Borrowing a bigger brain…", "available": deps.think_harder_available,
             }
+        return specs
 
     # ---- schema / metadata -------------------------------------------------
+    def _has_presence_source(self) -> bool:
+        hh = self.deps.household
+        if hh.who or hh.cameras:
+            return True
+        at, seen = self._probe          # an unconfigured household may still have Home Assistant person / tracker states
+        if self.clock() - at < PRESENCE_PROBE_S:
+            return seen
+        try:
+            state = self.deps.presence() or {}
+            seen = bool(state.get("locations") or state.get("home_status"))
+        except Exception:
+            seen = False
+        self._probe = (self.clock(), seen)
+        return seen
+
+    def unmet(self, name: str) -> Optional[str]:
+        """What a tool still needs (a PREREQUISITES entry in words), or None when it can be offered."""
+        hh, deps = self.deps.household, self.deps
+        ok = {
+            "presence_now": self._has_presence_source,
+            "ha_get_states": deps.ha_configured, "ha_call": deps.ha_configured,
+            "camera_look": lambda: bool(hh.cameras),
+            "camera_scan": lambda: any(k in hh.cameras for k in hh.ptz_cameras),
+            "correct_sighting": lambda: bool(hh.cameras),
+            "notify": lambda: bool(hh.phones),
+            "speak": lambda: bool(hh.speakers),
+            "run_scene": lambda: deps.run_scene is not None and bool(deps.scene_names()),
+        }.get(name)
+        try:
+            return None if ok is None or ok() else PREREQUISITES.get(name, "its prerequisites")
+        except Exception:
+            return PREREQUISITES.get(name, "its prerequisites")
+
     def _available(self, name: str) -> bool:
         if self.allowed is not None and name not in self.allowed:
+            return False
+        if self.unmet(name):
             return False
         check = self.specs.get(name, {}).get("available")
         try:
@@ -251,9 +321,22 @@ class CourageTools:
         except Exception:
             return False
 
+    def tool_names(self) -> List[str]:
+        """The tools offered right now."""
+        return [n for n in self.specs if self._available(n)]
+
     def openai_tools(self) -> List[Dict[str, Any]]:
-        return [{"type": "function", "function": {"name": n, "description": s["description"], "parameters": s["parameters"]}}
-                for n, s in self.specs.items() if self._available(n)]
+        out = []
+        for n, s in self.specs.items():
+            if not self._available(n):
+                continue
+            params = s["parameters"]
+            props = params.get("properties") or {}
+            if any(p.get("enum") == [] for p in props.values()):    # an empty enum (nobody named yet) means "free text"
+                props = {k: {a: b for a, b in p.items() if not (a == "enum" and b == [])} for k, p in props.items()}
+                params = dict(params, properties=props)
+            out.append({"type": "function", "function": {"name": n, "description": s["description"], "parameters": params}})
+        return out
 
     def needs_approval(self, name: str) -> bool:
         return bool(self.specs.get(name, {}).get("approval"))
@@ -268,7 +351,8 @@ class CourageTools:
     def validate(self, name: str, args: Dict[str, Any]) -> Optional[str]:
         """Return an error string if the call must be refused before approval is even asked."""
         if name not in self.specs or not self._available(name):
-            return f"unknown tool '{name}'"
+            why = self.unmet(name) if name in self.specs and (self.allowed is None or name in self.allowed) else None
+            return f"unknown tool '{name}'" + (f": not available here, it needs {why}" if why else "")
         if name == "ha_call":
             domain, service, eid = args.get("domain", ""), args.get("service", ""), args.get("entity_id", "")
             if service not in ALLOWED_SERVICES.get(domain, []):
@@ -290,8 +374,28 @@ class CourageTools:
                 return "say who it really was (name)"
             if not (args.get("who") or "").strip():
                 return "whose sighting? (who)"
-        if name in ("camera_look", "camera_scan") and args.get("camera") not in self.deps.household.cameras:
-            return f"unknown camera '{args.get('camera')}'"
+        if name in ("camera_look", "camera_scan"):
+            hh = self.deps.household
+            pool = hh.cameras if name == "camera_look" else {k: hh.cameras[k] for k in hh.ptz_cameras if k in hh.cameras}
+            key = self.camera_key_for(args.get("camera"), pool)
+            if key is None:
+                listing = ", ".join(f"{k} ({c.get('name', k)})" for k, c in pool.items())
+                return (f"unknown camera '{args.get('camera')}'. " +
+                        (f"The {'cameras' if name == 'camera_look' else 'pan-capable cameras'} are: {listing}" if listing
+                         else "No cameras are set up"))
+            args["camera"] = key             # the handler gets the real key even when the model wrote the display name
+        return None
+
+    @staticmethod
+    def camera_key_for(label: Any, pool: Dict[str, Dict[str, str]]) -> Optional[str]:
+        """The camera key a model's `camera` argument means: the key itself, or the display name, in any case, with spaces or
+        underscores, and with a trailing "camera" dropped ("living_room_camera", "Living Room"). None = no such camera."""
+        want = re.sub(r"[^a-z0-9]+", "_", str(label or "").lower()).strip("_")
+        want = re.sub(r"(^|_)cam(era)?$", "", want).strip("_") or want
+        for key, cam in pool.items():
+            names = {key, re.sub(r"[^a-z0-9]+", "_", str(cam.get("name", key)).lower()).strip("_")}
+            if want in names:
+                return key
         return None
 
     def resolve_entity(self, domain: str, entity_id: str):
@@ -394,7 +498,7 @@ class CourageTools:
         away = (state.get("home_status") or {}).get(who, {}).get("state") not in (None, "home", "unknown", "unavailable")
         if away:
             out["note"] = "GPS says they are not home, so I did not look through the cameras."
-        elif loc is None or (loc.get("minutes_ago") or 0) > STALE_MINUTES:
+        elif (loc is None or (loc.get("minutes_ago") or 0) > STALE_MINUTES) and self.deps.household.cameras:
             cam = self.deps.household.cameras[self._camera_key(loc and loc.get("camera"))]
             out["looked_now"] = {"camera": cam["name"],
                                  "sees": self.deps.camera_look(cam["entity"], cam["name"], people_only=True)
