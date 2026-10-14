@@ -2680,7 +2680,7 @@ def get_courage_agent():
             from stonesage.courage import CourageAgent, CourageDeps, CourageTools, llm_timeout_s
             home_part = app_ctx.hook("courage_home")   # Computer's house: tools, presence card, reflexes, phone (apps.py)
             if home_part is None:
-                raise RuntimeError("no app provides Computer's home (config.json 'apps' has no 'hearth')")
+                raise RuntimeError("no app provides Computer's home: " + app_ctx.why_missing("hearth", config.get("apps", ["hearth"])))
             home = home_part()
             deps = CourageDeps(
                 **home["deps"],
@@ -3067,7 +3067,7 @@ class StoneSageHandler(http.server.SimpleHTTPRequestHandler):
         except Exception as e:
             logger.warning(f"Courage (HA) loop failed: {e}")
         if not got_final:
-            piece = say(("\n\n" if answer else "") + "My brain on :8001 isn't answering. Try again in a moment.")
+            piece = say(("\n\n" if answer else "") + "I did not get an answer from my language model. Try again in a moment.")
             answer += piece
             if stream:
                 line(piece)
@@ -8507,12 +8507,14 @@ if __name__ == "__main__":
     print("  Login:             needs the API key  (python -m stonesage.auth show-key)")
     print(f"  LAN Workstation:   http://{lan_ip}:{port}")
     print(f"  Proxmox API:       {load_config().get('proxmox', {}).get('cluster_url', 'not configured')}")
-    print(f"  Dual-GPU Cluster:  coder-agent 16k (:8001) & home-agent (:8002)")
-    print(f"  RAG Proxy (HA):    http://{lan_ip}:{port}/api/ai/coordinator/v1")
-    print(f"  Qdrant Memory:     {endpoints.url('qdrant', config)}")
-    print(f"  Home Assistant:    {endpoints.url('homeassistant', config)}")
+    for label, svc in (("Coordinator", "coordinator"), ("Worker", "worker"), ("Embedder", "embedder"), ("Vision", "vision"),
+                       ("Qdrant Memory", "qdrant"), ("Home Assistant", "homeassistant")):
+        try:
+            where = endpoints.url(svc, config) if endpoints.configured(svc, config) else "not set up"
+        except Exception:
+            continue                     # a name this build does not know
+        print(f"  {label + ':':<19}{where}")
     print("=" * 68)
-    print("=" * 65)
 
     try:
         server.serve_forever()

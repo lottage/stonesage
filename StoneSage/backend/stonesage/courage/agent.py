@@ -275,6 +275,72 @@ def parse_text_calls(text: str, id_prefix: str = "text") -> Tuple[List[Dict[str,
     return calls, rest
 
 
+def json_args(raw: Any) -> str:
+    """Tool-call arguments as a JSON object string the engine will accept when the call goes back to it in the history.
+    A small model sometimes streams arguments that are empty or cut off (`{"camera":`); llama.cpp parses every assistant
+    tool call in the REQUEST and answers HTTP 500 "Failed to parse tool call arguments as JSON" for the whole request, so
+    one bad call would poison every later step of the turn (and the parse-failure retry, which resends the same history).
+    Anything that is not a JSON object becomes {}."""
+    if isinstance(raw, dict):
+        return json.dumps(raw, ensure_ascii=False)
+    try:
+        val = json.loads(raw, strict=False) if isinstance(raw, (str, bytes)) and raw.strip() else None
+    except ValueError:
+        val = None
+    return json.dumps(val if isinstance(val, dict) else {}, ensure_ascii=False)
+
+
+def clean_calls(calls: Any) -> List[Dict[str, Any]]:
+    """Copies of tool calls with arguments that are valid JSON objects (see json_args)."""
+    out = []
+    for c in calls or []:
+        if not isinstance(c, dict):
+            continue
+        fn = dict(c.get("function") or {})
+        fn["arguments"] = json_args(fn.get("arguments"))
+        out.append(dict(c, function=fn))
+    return out
+
+
+# A small model sometimes writes the tool's name as its reply instead of calling it: `presence_now`, `presence_now()`,
+# `presence_now({"who": "bella"})`. Exactly that, nothing else, is a call.
+BARE_CALL = re.compile(r"^[`\s]*([A-Za-z_][A-Za-z0-9_]*)\s*(?:\(\s*(\{.*\})?\s*\)|(\{.*\}))?[`\s]*$", re.S)
+
+
+def bare_tool_call(text: str, names: Any) -> Optional[Dict[str, Any]]:
+    """The tool call a reply that is only a known tool's name (optionally with () or a JSON object) stands for, else None."""
+    m = BARE_CALL.match(text or "")
+    if not m or m.group(1) not in names:
+        return None
+    raw = m.group(2) or m.group(3)
+    args: Dict[str, Any] = {}
+    if raw:
+        try:
+            val = json.loads(raw, strict=False)
+        except ValueError:
+            return None            # a name followed by something broken is not a clean call: leave it to the nudge
+        if not isinstance(val, dict):
+            return None
+        args = val
+    return {"id": "bare-%s" % uuid.uuid4().hex[:8], "type": "function",
+            "function": {"name": m.group(1), "arguments": json.dumps(args, ensure_ascii=False)}}
+
+
+def describe_llm_failure(e: BaseException, timeout: float = 0) -> str:
+    """What to tell the person when the model call failed: unreachable, silent too long, or answered with an error. No
+    internal addresses or ports."""
+    if isinstance(e, urllib.error.HTTPError):
+        return (f"My language model answered with an error (HTTP {e.code}), so I could not work that one out. "
+                "Try again; if it keeps happening, the model server's log has the details.")
+    reason = getattr(e, "reason", None)
+    if isinstance(e, (socket.timeout, TimeoutError)) or isinstance(reason, (socket.timeout, TimeoutError)):
+        waited = f" within {timeout:.0f} s" if timeout else ""
+        return f"My language model did not answer{waited}. It may be busy or still loading. Try again in a moment."
+    if isinstance(e, (urllib.error.URLError, ConnectionError, OSError)):
+        return "I cannot reach my language model right now. Try again in a moment."
+    return f"Something went wrong while I was thinking ({type(e).__name__}). Try again in a moment."
+
+
 def _release_point(text: str, start: int) -> int:
     """Where the finished sentences in text[start:] end (just after the punctuation), or start if none has."""
     cut = start
@@ -351,7 +417,7 @@ class CourageAgent:
     def _body(self, messages: List[Dict[str, Any]], max_tokens: Optional[int], parse_tools: bool = True) -> Dict[str, Any]:
         body = {
             "model": self.model,
-            "messages": messages,
+            "messages": [dict(m, tool_calls=clean_calls(m["tool_calls"])) if m.get("tool_calls") else m for m in messages],
             "tools": self.tools.openai_tools(),
             "temperature": 0.3,
             "max_tokens": max_tokens or MAX_REPLY_TOKENS,
@@ -403,6 +469,14 @@ class CourageAgent:
 
     def _model_turn(self, messages: List[Dict[str, Any]], url: Optional[str] = None, max_tokens: Optional[int] = None,
                     lead: str = ""):
+        """One model call with its recoveries (_recovering_turn); the tool calls it returns carry valid JSON arguments."""
+        msg = yield from self._recovering_turn(messages, url, max_tokens, lead=lead)
+        if msg.get("tool_calls"):
+            msg["tool_calls"] = clean_calls(msg["tool_calls"])
+        return msg
+
+    def _recovering_turn(self, messages: List[Dict[str, Any]], url: Optional[str] = None, max_tokens: Optional[int] = None,
+                         lead: str = ""):
         """_step, with one recovery: when the engine answers 500 because it could not parse the model's tool-call JSON, the same
         request goes again with the engine's parsing off, and the tool calls are read from the reply's text. Nothing parseable
         there -> the text is the answer. Any other failure is raised as before."""
@@ -727,14 +801,18 @@ class CourageAgent:
                     tr.end("on_loan", text)
                     yield {"type": "final", "content": text}
                     return
-                waited = f" after {self.timeout:.0f} s" if isinstance(e, (socket.timeout, TimeoutError)) or                     isinstance(getattr(e, "reason", None), (socket.timeout, TimeoutError)) else ""
-                text = f"My brain on :8001 isn't answering ({type(e).__name__}{waited}). Try again in a moment."
+                text = describe_llm_failure(e, self.timeout)
                 tr.end("llm_error", text)
                 yield {"type": "final", "content": text}
                 return
             tr.llm((time.time() - t_llm) * 1000, msg["_gen"][0], len(msg.get("tool_calls") or []), msg["_gen"][1])
 
             calls = msg.get("tool_calls") or []
+            if not calls and not msg.get("_sent"):
+                bare = bare_tool_call(THINK.sub("", msg.get("content") or ""), {t["function"]["name"] for t in self.tools.openai_tools()})
+                if bare:                      # the model wrote the tool's name instead of calling it
+                    tr.trigger("bare_tool_name")
+                    calls, msg["content"] = [bare], ""
             sent = msg.get("_sent") or ""
             asked = is_question(last_user)
             if not calls and sent:   # only the part not yet streamed can still lose a trailing offer

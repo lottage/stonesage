@@ -88,6 +88,7 @@ RULES: Tuple[Rule, ...] = (
     Rule("data", "**/*.tmp", "exclude", "a file somebody was still writing"),
     Rule("data", "**/.import-*", "exclude", "a half-finished soul import"),
     Rule("data", "**/*.pre-restore-*", "exclude", "files a restore moved aside; they are the safety copy, not state"),
+    Rule("data", "**/*.pre-merge-*", "exclude", "files a harness-folder merge moved aside; the safety copy, not state"),
     Rule("data", "**/*.bak-*", "exclude", "older copies that tools set aside (an overwritten soul); the current file is what matters"),
     Rule("data", "**/*.db-wal", "exclude", "SQLite side file; the database is copied whole through SQLite's own backup"),
     Rule("data", "**/*.db-shm", "exclude", "SQLite side file; see above"),

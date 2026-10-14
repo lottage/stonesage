@@ -66,6 +66,8 @@ class Install(unittest.TestCase):
         self.write(os.path.join(self.data, "pkg", "__pycache__", "m.cpython-312.pyc"), "x")
         self.write(os.path.join(self.data, "half.tmp"), "x")
         self.write(os.path.join(self.data, "custom_tools.json.bak-1"), "x")
+        self.write(os.path.join(self.data, "profiles", "pet.json.pre-merge-20261001-120000"), "x")
+        self.write(os.path.join(self.data, "profiles", "pet.json.pre-restore-20261001-120000"), "x")
         self.write(os.path.join(self.data, "harness.db-wal"), "x")
         self.db = os.path.join(self.data, "harness.db")
         con = sqlite3.connect(self.db)
@@ -150,7 +152,8 @@ class TestWhatGoesIn(Install):
                          "data/backups/stonesage-backup-old.tar.gz", "data/sighting_boxes.json", "data/engine_lease.json",
                          "data/boost_quota.json", "data/training/big.jsonl", "data/autonomous_dossiers/d.md",
                          "data/pkg/__pycache__/m.cpython-312.pyc", "data/half.tmp", "data/custom_tools.json.bak-1",
-                         "data/harness.db-wal", "data/souls/atlas.bak-20260101-000000/persona.md"):
+                         "data/harness.db-wal", "data/profiles/pet.json.pre-merge-20261001-120000",
+                         "data/profiles/pet.json.pre-restore-20261001-120000", "data/souls/atlas.bak-20260101-000000/persona.md"):
             self.assertNotIn(left_out, names)
 
     def test_a_big_unnamed_file_is_skipped_and_listed_with_the_reason(self):

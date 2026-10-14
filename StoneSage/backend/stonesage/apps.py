@@ -155,6 +155,7 @@ class AppContext:
         self.hooks: Dict[str, Callable[..., Any]] = {}
         self.routes = Routes()
         self.apps: List[str] = []
+        self.failed: Dict[str, str] = {}                   # app -> why it did not load
         self.versions: Dict[str, str] = {}
         self._starters: List[Tuple[str, Callable[[], None]]] = []
         self._metrics: List[Tuple[str, Callable[[], Iterable[str]]]] = []
@@ -209,11 +210,22 @@ class AppContext:
         self._tabs.append({"app": self._current, "id": str(tab_id), "label": str(label), "script": f"/apps/{self._current}/{script}",
                            "open": str(open), "target": target, "hide_engine_tabs": bool(hide_engine_tabs)})
 
+    def why_missing(self, name: str, configured: Optional[List[str]] = None) -> str:
+        """Why an app is not available, in words a person can act on: it failed to load (and why), is not switched on in
+        config.json 'apps', or is switched on but never reported in."""
+        name = APP_ALIASES.get(name, name)
+        if name in self.failed:
+            return f"the {name} app failed to load: {self.failed[name]}"
+        if configured is not None and name not in [APP_ALIASES.get(a, a) for a in configured]:
+            return f"config.json 'apps' has no '{name}'"
+        return f"the {name} app is not loaded"
+
     def manifest(self) -> Dict[str, Any]:
         """What GET /api/apps answers: the loaded apps with their tabs, and the installed ones that are not switched on."""
         rows = [{"id": a, "name": a.replace("_", " ").replace("-", " ").title(), "version": self.versions.get(a, ""),
                  "tabs": [{k: v for k, v in t.items() if k != "app"} for t in self._tabs if t["app"] == a]} for a in self.apps]
-        return {"ok": True, "apps": rows, "available": sorted(n for n in discover() if n not in self.apps)}
+        return {"ok": True, "apps": rows, "available": sorted(n for n in discover() if n not in self.apps),
+                "failed": dict(self.failed)}
 
     def start(self) -> None:
         for app, fn in self._starters:
@@ -255,6 +267,7 @@ def load_apps(names: List[str], ctx: AppContext) -> List[str]:
             ctx.versions[name] = version
             loaded.append(name)
         except Exception as e:
+            ctx.failed[name] = f"{type(e).__name__}: {e}"
             logger.error(f"app {name!r} did not load: {type(e).__name__}: {e}")
         finally:
             ctx._current = ""
